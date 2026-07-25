@@ -6,7 +6,7 @@
 #
 # Ou, sem clonar o repositório:
 #
-#   curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/revisao-julho2026/scripts/check.sh | bash
+#   curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/scripts/check.sh | bash
 #
 # Use este script sempre que uma seção do laboratório não se comportar como o
 # texto descreve: ele diz o que está faltando em vez de deixar você adivinhar.

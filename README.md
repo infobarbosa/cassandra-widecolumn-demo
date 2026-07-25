@@ -109,7 +109,7 @@ A diferença entre os dois últimos importa: o Cassandra recusa consultas mal mo
 Baixe o arquivo do Docker Compose:
 
 ```sh
-wget https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/revisao-julho2026/compose.yaml
+wget https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/compose.yaml
 
 ```
 
@@ -174,7 +174,7 @@ Os dois containers de carga aparecem como `Exited (0)`, e **é isso que se esper
 ### Verificando o ambiente
 
 ```sh
-curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/revisao-julho2026/scripts/check.sh | bash
+curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/scripts/check.sh | bash
 
 ```
 
@@ -1830,7 +1830,7 @@ conectado, versão: 5.0.8
 Baixe a aplicação:
 
 ```sh
-wget https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/revisao-julho2026/driver_demo.py
+wget https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/driver_demo.py
 
 ```
 
@@ -2285,7 +2285,7 @@ O `-v` remove também o volume de dados. Como as duas keyspaces são recriadas e
 Antes de qualquer coisa, rode a verificação — ela costuma responder sozinha:
 
 ```sh
-curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/revisao-julho2026/scripts/check.sh | bash
+curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/scripts/check.sh | bash
 
 ```
 
@@ -2432,7 +2432,6 @@ Todas as fases concluídas. O laboratório foi executado de ponta a ponta em amb
 
 ### Pendências da revisão
 
-- As URLs de `wget` e `curl` apontam para a branch `revisao-julho2026`, para que ela seja executável antes do merge. **No merge, trocar por `main`.**
 - As imagens `ghcr.io/infobarbosa/cassandra-gerador-esquema-{infobarbank,ecommerce}` precisam ser publicadas e tornadas públicas. Enquanto isso, o `compose.yaml` só funciona em máquina que as tenha construído localmente.
 - Fator de replicação aparece apenas como parâmetro de `CREATE KEYSPACE`. Alterar RF, `nodetool repair` e o comportamento de cada consistency level sob falha vão inteiros para o laboratório de cluster — demonstrar isso com um nó exigiria encenar uma configuração que ninguém usa.
 
