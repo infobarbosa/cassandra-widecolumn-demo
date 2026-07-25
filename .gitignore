@@ -1,0 +1,6 @@
+# Ambiente virtual criado na Parte III do laboratório
+venv/
+.venv/
+
+__pycache__/
+*.py[cod]

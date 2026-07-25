@@ -1766,7 +1766,268 @@ cql "ALTER TABLE lab.cliente WITH compaction = {'class':'SizeTieredCompactionStr
 
 ## 10. O driver Python
 
-> Em elaboração (fase A5).
+O fluxo Q1 a Q7 é a sequência de telas de um aplicativo. Até aqui você o executou digitando `cqlsh`. Vamos executá-lo como o aplicativo faz.
+
+### Preparando o ambiente
+
+O driver roda **no host**, não dentro do container: a imagem do Cassandra tem `python3` mas não tem `pip`. E é assim que se parece com a realidade — a aplicação nunca mora no mesmo host do banco.
+
+```sh
+python3 -m venv venv
+
+```
+
+```sh
+. venv/bin/activate
+
+```
+
+```sh
+pip install cassandra-driver
+
+```
+
+A conexão vai para `127.0.0.1:9042`, a porta que o `compose.yaml` publica no host:
+
+```sh
+python3 -c "
+from cassandra.cluster import Cluster
+cluster = Cluster(['127.0.0.1'])
+session = cluster.connect('infobarbank')
+print('conectado, versão:', session.execute('SELECT release_version FROM system.local').one().release_version)
+cluster.shutdown()"
+
+```
+
+```
+conectado, versão: 5.0.8
+```
+
+### O fluxo aplicacional
+
+Baixe a aplicação:
+
+```sh
+wget https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/revisao-julho2026/driver_demo.py
+
+```
+
+```sh
+python3 driver_demo.py
+
+```
+
+```
+Cliente 2b162060 — MARIVALDA KANAMARY — competência 2026-06
+
+Q1 · Dados da conta
+  conta 2b162060  ATIVA    apelido MARIVALDA    saldo R$     100,00
+
+Q2 · Cartões de crédito
+  007c2c1c  ATIVO    5450 3799 9172 8454  limite R$   1.000,00  disponível R$     900,00
+  897199aa  ATIVO    5576 8924 9861 7490  limite R$     200,00  disponível R$      50,00
+  9a748c3c  INATIVO  5188 2716 2053 8850  limite R$     500,00  disponível R$     100,00
+
+Q3 · Últimos lançamentos aprovados
+  27/06 17:46  2b162060  Posto de gasolina    R$     708,41
+  27/06 17:46  897199aa  Salão de beleza      R$     835,99
+  25/06 17:46  2b162060  Salão de beleza      R$     936,00
+  21/06 17:46  2b162060  Loja de brinquedos   R$     727,70
+  19/06 17:46  2b162060  Salão de beleza      R$     654,87
+
+Q4 · Extrato por período (dias 19 a 27)
+  27/06 17:46  DEBITO   Posto de gasolina    R$     708,41
+  [...]
+
+Q7 · Detalhe do lançamento cc44552e
+  27/06/2026 17:46  Posto de gasolina
+  R$     708,41  APROVADA
+  autenticação b2c5db0d-ec3c-4a13-b116-a44e1ffd8e41
+```
+
+Você pode passar outra cliente e outra competência:
+
+```sh
+python3 driver_demo.py 2b16242a
+
+```
+
+```sh
+python3 driver_demo.py 2b162060 2026-05
+
+```
+
+> Sete das cinquenta clientes têm conta, cartões e lançamentos: `2b162060`, `2b16242a`, `2b16256a`, `2b16353c`, `2b1636ae`, `2b16396a` e `2b163bcc` — as mesmas personas da seção 4. Para as outras, o script avisa que não há lançamentos e encerra.
+
+### Leia o código
+
+Abra o `driver_demo.py`. Três decisões nele merecem atenção.
+
+**1. Prepared statements.** Cada consulta é preparada uma vez e executada com parâmetros:
+
+```python
+CONSULTAS = {
+    "Q3": """
+        SELECT data_hora, id_produto, estabelecimento, valor
+        FROM lancamentos_por_status
+        WHERE id_cliente = ? AND competencia = ? AND status = 'APROVADA'
+        LIMIT 5
+    """,
+    ...
+}
+
+stmt = {nome: session.prepare(cql) for nome, cql in CONSULTAS.items()}
+...
+session.execute(stmt["Q3"], [id_cliente, competencia])
+```
+
+O ganho evidente é que o servidor analisa a consulta uma vez só. O ganho maior é que o driver passa a **conhecer a estrutura da consulta** — inclusive quais parâmetros formam a partition key.
+
+Nunca monte CQL concatenando string. Além da injeção, você perde as duas vantagens acima.
+
+**2. Política de balanceamento declarada.**
+
+```python
+perfil = ExecutionProfile(
+    load_balancing_policy=TokenAwarePolicy(DCAwareRoundRobinPolicy(local_dc=DATACENTER)),
+    consistency_level=ConsistencyLevel.LOCAL_ONE,
+    request_timeout=15,
+)
+cluster = Cluster(CONTACT_POINTS, execution_profiles={EXEC_PROFILE_DEFAULT: perfil})
+```
+
+`TokenAwarePolicy` é onde as seções 5 e 10 se encontram. Com um prepared statement, o driver calcula o **token** da partition key ali mesmo, no cliente, e envia a consulta **direto para um nó que tem a réplica** — em vez de escolher um nó qualquer e obrigá-lo a intermediar. É o cálculo de `token(id_cliente)` que você fez na seção 5, agora sendo usado para rotear.
+
+Com um nó isso não muda nada. É a configuração que se leva para produção, e o motivo pelo qual prepared statement é questão de desempenho, não só de segurança.
+
+`DCAwareRoundRobinPolicy(local_dc=...)` mantém o tráfego no datacenter local. `ConsistencyLevel` e o comportamento de cada nível sob falha de réplica pertencem ao laboratório de cluster; aqui ficam declarados no perfil, onde a aplicação de verdade os define.
+
+Se você omitir a política, o driver avisa:
+
+```
+Cluster.__init__ called with contact_points specified, but no load_balancing_policy.
+In the next major version, this will raise an error; please specify a load-balancing policy.
+```
+
+**3. Parâmetro é tipado.**
+
+```python
+ano, mes = (int(parte) for parte in competencia.split("-"))
+inicio = datetime(ano, mes, 19)
+fim = datetime(ano, mes, 28)
+```
+
+No `cqlsh`, `data_hora >= '2026-06-19'` funciona: ele converte o literal. No driver, um parâmetro de prepared statement é tipado e verificado **no cliente**, antes de a consulta sair da máquina. Passar a string devolve:
+
+```
+TypeError: DateType arguments must be a datetime, date, or timestamp
+```
+
+### O erro da seção 8, agora em Python
+
+Repare em como o script descobre a competência:
+
+```python
+session.execute("SELECT DISTINCT id_cliente, competencia FROM lancamentos_por_periodo")
+```
+
+A tentativa natural seria filtrar pela cliente:
+
+> **Provoque este erro.**
+
+```sh
+python3 -c "
+from cassandra.cluster import Cluster
+session = Cluster(['127.0.0.1']).connect('infobarbank')
+session.execute(\"SELECT competencia FROM lancamentos_por_periodo WHERE id_cliente='2b162060'\")"
+
+```
+
+```
+cassandra.InvalidRequest: Error from server: code=2200 [Invalid query]
+message="Cannot execute this query as it might involve data filtering..."
+```
+
+É o primeiro erro de 8.5 — partition key composta pela metade — agora como exceção Python. **O driver não protege de modelagem errada**, e não existe camada de abstração que resolva isso: as regras da seção 8 valem em qualquer linguagem.
+
+O `SELECT DISTINCT` sobre as colunas da partition key é válido porque percorre o índice de partições, não os dados. Mas continua sendo conveniência de laboratório: percorrer todas as partições não escala. Um aplicativo de banco não descobre a competência — ele a recebe do seletor de mês da tela.
+
+### Paginação
+
+Uma consulta que devolve muitas linhas não vem de uma vez. O driver busca por páginas, e a iteração vai pedindo as seguintes conforme você consome:
+
+```sh
+python3 -c "
+from cassandra.cluster import Cluster
+from cassandra.query import SimpleStatement
+session = Cluster(['127.0.0.1']).connect('infobarbank')
+stmt = SimpleStatement('SELECT id_lancamento, valor FROM lancamentos_detalhe', fetch_size=100)
+resultado = session.execute(stmt)
+paginas = 0
+linhas = 0
+while True:
+    paginas += 1
+    linhas += len(resultado.current_rows)
+    if resultado.has_more_pages:
+        resultado.fetch_next_page()
+    else:
+        break
+print(f'{linhas} linhas em {paginas} páginas de 100')"
+
+```
+
+```
+1000 linhas em 11 páginas de 100
+```
+
+Onze páginas para mil linhas em páginas de cem — a última vem vazia. O Cassandra devolve um *paging state* junto de cada página e não sabe que acabou até tentar buscar a seguinte: ele leu até completar cem linhas, guardou onde parou, e só na décima primeira tentativa descobriu que não havia mais nada. Não é desperdício relevante, mas explica a contagem.
+
+O `fetch_size` padrão do driver é 5000. O que ele protege é a memória do **cliente** e o tempo de resposta do **coordenador**: sem paginação, uma consulta ampla obrigaria o nó a montar o resultado inteiro antes de enviar qualquer coisa.
+
+Isso não torna consulta ampla aceitável. Paginar uma varredura continua sendo uma varredura — a seção 8.6 vale igual. Paginação existe para o caso em que **uma partição legítima** tem muitas linhas.
+
+### Assíncrono
+
+A tela de abertura do aplicativo precisa de Q1 e Q2 ao mesmo tempo. Executá-las em sequência soma as duas latências; disparadas juntas, custa a maior das duas:
+
+```sh
+python3 -c "
+from cassandra.cluster import Cluster
+session = Cluster(['127.0.0.1']).connect('infobarbank')
+q1 = session.prepare('SELECT id_conta, saldo_disponivel FROM conta_corrente WHERE id_cliente = ?')
+q2 = session.prepare('SELECT id_cartao, limite_disponivel FROM cartao_credito WHERE id_cliente = ?')
+futuros = [session.execute_async(q1, ['2b162060']), session.execute_async(q2, ['2b162060'])]
+conta, cartoes = [f.result() for f in futuros]
+print('conta  :', conta.one().id_conta, conta.one().saldo_disponivel)
+print('cartões:', [c.id_cartao for c in cartoes])"
+
+```
+
+```
+conta  : 2b162060 100.0
+cartões: ['007c2c1c', '897199aa', '9a748c3c']
+```
+
+`execute_async` devolve um future imediatamente; `result()` espera. Como cada consulta vai para uma partição diferente — e, em cluster, possivelmente para nós diferentes — o paralelismo é real.
+
+Esse padrão é o que torna viável o modelo da Parte II. Uma tela que precisa de dados de cinco tabelas faz cinco leituras pontuais em paralelo, e isso é mais rápido e mais previsível do que um `JOIN` de cinco tabelas em qualquer banco relacional. **A denormalização não é um preço que se paga; é o que permite a leitura ser trivial.**
+
+### O que você deve conseguir explicar
+
+- Por que prepared statement é questão de desempenho, e não só de segurança.
+- O que `TokenAwarePolicy` faz com o resultado de `token(id_cliente)`.
+- Por que uma modelagem errada erra igual em Python e no `cqlsh`.
+- A diferença entre paginar uma partição grande e paginar uma varredura.
+- Por que cinco leituras pontuais em paralelo podem ganhar de um `JOIN`.
+
+Quando terminar, saia do ambiente virtual:
+
+```sh
+deactivate
+
+```
+
+**→ Parte IV.** Você percorreu um modelo completo, das perguntas às tabelas, e o executou de dentro de uma aplicação. Agora é a sua vez — em outra empresa.
 
 ## 11. Enunciado
 
