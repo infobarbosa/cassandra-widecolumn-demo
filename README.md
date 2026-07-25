@@ -15,7 +15,7 @@ O laboratório inteiro cabe neste arquivo. Os comandos são copy-paste em termin
 
 ## O que você vai saber fazer ao final
 
-- Criar keyspaces e escolher o fator de replicação, entendendo o que ele custa em disponibilidade.
+- Criar keyspaces e declarar a estratégia de replicação adequada à topologia.
 - Escrever `CREATE TABLE` cujo `PRIMARY KEY` responde a uma consulta específica, e explicar a diferença entre **partition key** e **clustering key**.
 - Prever em qual partição uma linha vai cair, e por que a ordem física dos dados no disco é uma decisão de modelagem.
 - Acompanhar o caminho de escrita — commit log, memtable, SSTable, compactação, tombstone — observando os arquivos que o Cassandra cria.
@@ -419,15 +419,281 @@ CREATE KEYSPACE ks001
 
 Vale também segmentar keyspaces por assunto — pedidos, faturamento, contábil — ou uma por microsserviço. A segmentação facilita a administração e permite política de replicação diferente para cada conjunto de dados.
 
-**→ Próxima seção.** Você escolheu uma cópia do dado. Essa escolha tem consequência direta sobre disponibilidade, e dá para senti-la mesmo com um nó só — mas para isso precisamos de dados. Vamos criar a primeira tabela.
+### Até onde este laboratório vai
+
+O fator de replicação que você acabou de definir é o parâmetro mais consequente do Cassandra: ele decide quantas cópias de cada dado existem e, junto com o **consistency level** escolhido pela aplicação, determina o que acontece quando um nó cai — quanto o cluster tolera de falha e sob qual garantia de leitura.
+
+Nada disso se demonstra com um nó. Derrubar réplicas, acompanhar `nodetool repair` redistribuindo dados e comparar `ONE`, `QUORUM` e `ALL` sob falha exige um cluster de verdade, e é assunto de um laboratório próprio. Aqui o fator de replicação fica no papel que ele tem nesta seção: uma decisão que se declara ao criar a keyspace.
+
+**→ Próxima seção.** Com a keyspace criada, você já pode criar tabelas — e é aí que começam as decisões que o Cassandra não perdoa.
 
 ## 4. Sua primeira tabela
 
-> Em elaboração (fase A2).
+Vamos cadastrar clientes. Estas cinco pessoas você vai reencontrar na Parte II, no sistema do banco — inclusive com o mesmo `id_cliente`:
+
+```sh
+cql "
+CREATE TABLE lab.cliente (
+    id_cliente  text PRIMARY KEY,
+    cpf         text,
+    nome        text,
+    sobrenome   text,
+    email       text
+);"
+
+```
+
+### O que o Cassandra realmente criou
+
+```sh
+cql "DESCRIBE TABLE lab.cliente;"
+
+```
+
+```
+CREATE TABLE lab.cliente (
+    id_cliente text PRIMARY KEY,
+    cpf text,
+    email text,
+    nome text,
+    sobrenome text
+) WITH additional_write_policy = '99p'
+    AND bloom_filter_fp_chance = 0.01
+    AND caching = {'keys': 'ALL', 'rows_per_partition': 'NONE'}
+    AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy', 'max_threshold': '32', 'min_threshold': '4'}
+    AND compression = {'chunk_length_in_kb': '16', 'class': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+    AND default_time_to_live = 0
+    AND gc_grace_seconds = 864000
+    [... mais dez opções ...]
+    AND speculative_retry = '99p';
+```
+
+Duas observações sobre esse resultado.
+
+A primeira: **as colunas mudaram de ordem**. Você declarou `cpf, nome, sobrenome, email` e o Cassandra guardou `cpf, email, nome, sobrenome` — alfabética, depois da chave. A ordem em que você declara colunas não-chave é irrelevante para ele.
+
+A segunda: você escreveu cinco linhas e o Cassandra completou umas vinte opções de armazenamento. Três delas voltam mais adiante neste laboratório:
+
+| Opção | Onde reaparece |
+|---|---|
+| `compaction` | seção 6, quando vários arquivos de dados forem fundidos em um |
+| `gc_grace_seconds` | seção 6, quando um registro apagado continuar no disco |
+| `compression` | seção 6, ao inspecionar o arquivo de dados |
+
+### INSERT
+
+```sh
+cql "
+INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b162060','987.539.360-60','MARIVALDA','KANAMARY','marivalda@bmail.com');
+INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16242a','124.554.260-50','JUCILENE','MOREIRA CRUZ','jucilene@bmail.com');
+INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16256a','324.873.000-51','GRACIMAR','BRASIL GUERRA','gracimar@bmail.com');
+INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16353c','598.131.330-74','ALDENORA','VIANA MOREIRA','aldenora@gmail.com');
+INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b1636ae','797.399.520-03','VERA','LUCIA RODRIGUES SENA','vera@bmail.com');"
+
+```
+
+### SELECT
+
+```sh
+cql "SELECT id_cliente, nome, sobrenome FROM lab.cliente;"
+
+```
+
+```
+ id_cliente | nome      | sobrenome
+------------+-----------+----------------------
+   2b1636ae |      VERA | LUCIA RODRIGUES SENA
+   2b16242a |  JUCILENE |         MOREIRA CRUZ
+   2b16256a |  GRACIMAR |        BRASIL GUERRA
+   2b16353c |  ALDENORA |        VIANA MOREIRA
+   2b162060 | MARIVALDA |             KANAMARY
+
+(5 rows)
+```
+
+**Repare na ordem.** Não é a de inserção, não é alfabética, não é a do `id_cliente`. Também não é aleatória — e não vai mudar se você repetir a consulta. Essa ordem é o assunto da próxima seção.
+
+Busca pela chave, que é a consulta que o Cassandra faz melhor:
+
+```sh
+cql "SELECT * FROM lab.cliente WHERE id_cliente = '2b162060';"
+
+```
+
+```
+ id_cliente | cpf            | email               | nome      | sobrenome
+------------+----------------+---------------------+-----------+-----------
+   2b162060 | 987.539.360-60 | marivalda@bmail.com | MARIVALDA |  KANAMARY
+
+(1 rows)
+```
+
+Agora uma busca por um campo que **não** é chave:
+
+> **Provoque este erro.**
+
+```sh
+cql "SELECT * FROM lab.cliente WHERE nome = 'MARIVALDA';"
+
+```
+
+```
+InvalidRequest: Error from server: code=2200 [Invalid query] message="Cannot execute
+this query as it might involve data filtering and thus may have unpredictable
+performance. If you want to execute this query despite the performance
+unpredictability, use ALLOW FILTERING"
+```
+
+Cinco linhas na tabela e o Cassandra se recusa a varrê-las. Não é limitação de implementação: é uma escolha de projeto. Uma consulta que hoje varre cinco linhas vai varrer cinco bilhões amanhã, e ele prefere recusar a entregar uma consulta que funciona no desenvolvimento e derruba a produção.
+
+O `ALLOW FILTERING` sugerido na mensagem existe e faz exatamente o que o nome diz. Vamos medir o custo dele na seção 8, junto com as duas outras respostas possíveis para esse erro.
+
+### UPDATE
+
+```sh
+cql "UPDATE lab.cliente SET email = 'aldenora.moreira@bmail.com' WHERE id_cliente = '2b16353c';"
+
+```
+
+```sh
+cql "SELECT id_cliente, nome, email FROM lab.cliente WHERE id_cliente = '2b16353c';"
+
+```
+
+```
+ id_cliente | nome     | email
+------------+----------+----------------------------
+   2b16353c | ALDENORA | aldenora.moreira@bmail.com
+
+(1 rows)
+```
+
+Agora experimente atualizar uma chave que não existe:
+
+```sh
+cql "UPDATE lab.cliente SET nome = 'FANTASMA' WHERE id_cliente = 'NAO-EXISTE';"
+
+```
+
+```sh
+cql "SELECT id_cliente, nome, cpf FROM lab.cliente WHERE id_cliente = 'NAO-EXISTE';"
+
+```
+
+```
+ id_cliente | nome     | cpf
+------------+----------+------
+ NAO-EXISTE | FANTASMA | null
+
+(1 rows)
+```
+
+O `UPDATE` **criou** a linha. No Cassandra não existe diferença entre inserir e atualizar: as duas operações são a mesma escrita, e o termo para isso é *upsert*. Consequência prática que costuma pegar quem vem do mundo relacional: um `UPDATE` com a chave errada não devolve "0 linhas afetadas" — ele cria um registro novo, com `null` em tudo o que você não informou.
+
+Por isso também não existe erro de chave duplicada. Um `INSERT` com uma chave que já existe sobrescreve os campos informados, silenciosamente.
+
+### DELETE
+
+```sh
+cql "DELETE FROM lab.cliente WHERE id_cliente = 'NAO-EXISTE';"
+
+```
+
+```sh
+cql "DELETE FROM lab.cliente WHERE id_cliente = '2b16256a';"
+
+```
+
+```sh
+cql "SELECT id_cliente, nome FROM lab.cliente WHERE id_cliente = '2b16256a';"
+
+```
+
+```
+ id_cliente | nome
+------------+------
+
+
+(0 rows)
+```
+
+A Gracimar desapareceu da consulta. Guarde esta frase, porque a seção 6 vai desmenti-la: **o dado dela não foi apagado do disco**.
+
+Note também que apagar uma chave inexistente não deu erro. Faz sentido, pelo mesmo motivo do upsert: o Cassandra não vai ler antes de escrever só para conferir se havia algo lá.
+
+**→ Próxima seção.** Você inseriu cinco clientes e o Cassandra os devolveu numa ordem que ninguém pediu. Essa ordem não é detalhe de apresentação: é o endereço físico de cada linha.
+
+---
 
 ## 5. Onde o dado mora: partição e token
 
-> Em elaboração (fase A2).
+Toda linha que você grava vai para uma **partição**, e a partição é escolhida aplicando uma função de hash sobre a partition key. Em `lab.cliente`, a partition key é `id_cliente` — a única coluna da `PRIMARY KEY`.
+
+O resultado dessa função é um número chamado **token**, e ele dá para consultar:
+
+```sh
+cql "SELECT id_cliente, token(id_cliente), nome FROM lab.cliente;"
+
+```
+
+```
+ id_cliente | system.token(id_cliente) | nome
+------------+--------------------------+-----------
+   2b1636ae |     -4846341449078699481 |      VERA
+   2b16242a |     -4461337310647205397 |  JUCILENE
+   2b16353c |     -3218952037653612748 |  ALDENORA
+   2b162060 |      -754340186604780055 | MARIVALDA
+
+(4 rows)
+```
+
+Compare com o `SELECT` da seção anterior: **é a mesma ordem**. O Cassandra devolveu as linhas ordenadas por token, porque é assim que elas estão guardadas. A ordem que pareceu arbitrária é o endereço físico.
+
+O token é um inteiro de 64 bits, produzido pelo particionador `Murmur3Partitioner` — o padrão desde a versão 1.2. Ele vai de -2⁶³ a 2⁶³-1, e esse intervalo é o **anel** de que se fala em Cassandra.
+
+### O anel deste nó
+
+```sh
+nt ring
+
+```
+
+```
+Datacenter: datacenter1
+==========
+Address          Rack        Status State   Load            Owns                Token
+                                                                                9136285029854853100
+172.21.0.2       RAC1        Up     Normal  113.55 KiB      100.00%             -7720454491340799877
+[... quatro linhas ...]
+172.21.0.2       RAC1        Up     Normal  113.55 KiB      100.00%             -1157312431376904826
+172.21.0.2       RAC1        Up     Normal  113.55 KiB      100.00%              -312935783885743070
+172.21.0.2       RAC1        Up     Normal  113.55 KiB      100.00%              1127332446016840168
+[... mais oito linhas ...]
+
+  Warning: "nodetool ring" is used to output all the tokens of a node.
+  To view status related info of a node use "nodetool status" instead.
+```
+
+Dezesseis linhas para um único nó — o mesmo `Tokens 16` que o `nt status` mostrou na seção 2. O nó não ocupa uma posição no anel, ocupa dezesseis, e cada uma delas responde por uma faixa que **termina** no token da linha. Isso se chama **vnodes**, e existe para que a entrada ou saída de um nó redistribua o dado em pedaços pequenos, em vez de mover metade do cluster.
+
+Agora localize a Marivalda. O token dela é `-754340186604780055`, e no trecho acima ele cai entre `-1157312431376904826` e `-312935783885743070`. Essa faixa é a que responde por ela.
+
+> Os valores de token do **anel** são sorteados quando o nó é criado, então os do seu ambiente serão outros. Os valores de token das **linhas** não: `token('2b162060')` devolve `-754340186604780055` em qualquer instalação, porque é um hash da chave. Procure no seu `nt ring` a faixa que contém esse número.
+
+Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, cada um ficaria com aproximadamente metade das faixas, e cada partição passaria a ter um endereço não só no disco, mas na rede. Esse é o assunto do laboratório de cluster.
+
+### Partição e linha não são a mesma coisa
+
+Em `lab.cliente`, cada partição tem exatamente uma linha, porque a `PRIMARY KEY` tem só a partition key. É o caso mais simples que existe, e também o menos interessante: uma partição de uma linha só não aproveita nada do que o Cassandra sabe fazer.
+
+O que muda quando a `PRIMARY KEY` tem mais colunas é o centro da Parte II. Por ora, guarde a distinção:
+
+| | |
+|---|---|
+| **partition key** | decide **em qual partição** — e, num cluster, em qual nó — a linha mora |
+| **clustering key** | decide **em que ordem** as linhas ficam dentro da partição |
+
+**→ Próxima seção.** Você sabe onde cada linha mora e em que ordem. Falta ver o que existe de fato no disco — inclusive a Gracimar, que você apagou e que ainda está lá.
 
 ## 6. Do memtable ao disco
 
@@ -501,7 +767,7 @@ Fases: **A0** estrutura · **A1** seções 1–3 (feitas) · A2 seções 4–5 �
 
 - As URLs de `wget` e `curl` apontam para a branch `revisao-julho2026`, para que ela seja executável antes do merge. **No merge, trocar por `main`.**
 - As imagens `ghcr.io/infobarbosa/cassandra-gerador-esquema-{infobarbank,ecommerce}` precisam ser publicadas e tornadas públicas. Enquanto isso, o `compose.yaml` só funciona em máquina que as tenha construído localmente.
-- O teste prático de fator de replicação contra consistency level ficou no fim da seção 4, e não na 3: ele precisa de dados na tabela. A seção 3 anuncia, a 4 executa.
+- Fator de replicação aparece apenas como parâmetro de `CREATE KEYSPACE`. Alterar RF, `nodetool repair` e o comportamento de cada consistency level sob falha vão inteiros para o laboratório de cluster — demonstrar isso com um nó exigiria encenar uma configuração que ninguém usa.
 
 ### Mapa do que saiu
 
