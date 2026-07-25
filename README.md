@@ -2031,11 +2031,221 @@ deactivate
 
 ## 11. Enunciado
 
-> Em elaboração (fase A6).
+Você acabou de percorrer o modelo de um banco digital, das sete perguntas do fluxo aplicacional até as doze tabelas que as respondem. Agora a mesma coisa em outra empresa — e você não recebe o mapa.
+
+A keyspace `ecommerce` é uma **loja virtual**, já carregada. Ela foi modelada com as mesmas convenções do `infobarbank`: nomes no padrão `entidade_por_critério`, partição por entidade mais janela de tempo, ordenação física por data decrescente, e uma tabela dedicada à leitura pontual pelo id.
+
+A cliente é a mesma pessoa. No banco ela é `2b162060`; na loja, **`CLI-000001`** — mesmo nome, mesmo CPF, id próprio de cada sistema. É por isso que as duas empresas precisam de uma tabela de acesso por CPF.
+
+### Explorando
+
+```sh
+cql "DESCRIBE KEYSPACE ecommerce;"
+
+```
+
+```sh
+cql "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecommerce';"
+
+```
+
+```
+ table_name
+-----------------------------
+                     cliente
+             cliente_por_cpf
+           cliente_por_email
+ forma_pagamento_por_cliente
+              pedido_detalhe
+ pedidos_por_forma_pagamento
+         pedidos_por_periodo
+         pedidos_por_produto
+ pedidos_por_produto_cliente
+          pedidos_por_status
+              pedidos_por_uf
+
+(11 rows)
+```
+
+Descubra as competências disponíveis — aqui também os dados são relativos à data de execução:
+
+```sh
+cql "SELECT DISTINCT id_cliente, competencia FROM ecommerce.pedidos_por_periodo;"
+
+```
+
+Use uma competência **fechada** com bom volume. Nos exemplos deste enunciado aparece `2026-05`; troque pela que existir no seu ambiente.
+
+### As consultas
+
+Escreva, para cada item, a consulta CQL que o responde. Todas as respostas existem: **não é necessário criar nenhuma tabela**.
+
+| | Consulta |
+|---|---|
+| **Q1'** | Exibir os dados cadastrais da cliente `CLI-000001`. |
+| **Q2'** | Dado apenas o CPF `987.539.360-60`, descobrir de quem é a conta. |
+| **Q3'** | Exibir as formas de pagamento cadastradas pela cliente, com a situação de cada uma. |
+| **Q4'** | Exibir os cinco pedidos **aprovados** mais recentes da cliente na competência escolhida. |
+| **Q5'** | Exibir os pedidos da cliente entre os dias 10 e 20 da competência. |
+| **Q6'** | Exibir os pedidos de `TABLET` feitos pela cliente na competência. |
+| **Q7'** | Exibir os pedidos que a cliente pagou com `PIX` na competência. |
+| **Q8'** | Exibir o detalhe completo de um pedido, tendo apenas o `id_pedido`. |
+| **Q9'** | *(analítica)* Exibir todas as vendas do estado de `SP` em um dia específico. |
+| **Q10'** | *(analítica)* Exibir todas as vendas de `NOTEBOOK` em um dia específico. |
+
+### O que entregar
+
+Para cada consulta:
+
+1. **O comando CQL**, executado e funcionando.
+2. **O resultado** que ele devolveu.
+3. **Uma linha** dizendo qual tabela você usou e por que ela, e não outra.
+
+O item 3 é o que está sendo avaliado. Duas tabelas diferentes podem devolver o mesmo resultado nesta base pequena; só uma delas responde àquela pergunta com uma leitura pontual em uma partição. A justificativa deve mencionar a partition key e, quando for o caso, a clustering key.
+
+### Critérios
+
+| | |
+|---|---|
+| A consulta funciona | necessário, não suficiente |
+| Informa a partition key completa | nenhuma resposta deve precisar de `ALLOW FILTERING` |
+| Escolheu a tabela cuja ordenação física já entrega o resultado pedido | nenhuma resposta deve precisar de `ORDER BY` |
+| A justificativa identifica corretamente o padrão de acesso | é o item que separa quem entendeu de quem traduziu |
+
+> Se alguma resposta sua precisar de `ALLOW FILTERING` ou de `ORDER BY`, ela está usando a tabela errada. Releia a seção 8.
+
+### Duas perguntas para discutir em sala
+
+Não precisam de código.
+
+1. A loja quer uma tela com **os dez pedidos de maior valor** de uma cliente numa competência. Nenhuma das onze tabelas responde a isso com eficiência. Por quê, e o que precisaria existir?
+2. `pedidos_por_uf` particiona por `(uf, data_pedido)`. O que aconteceria com essa tabela se a partition key fosse apenas `uf`?
 
 ## A. Busca vetorial
 
-> Em elaboração (fase A6).
+A versão 5 trouxe um tipo de dado novo, `vector<float, N>`, e uma forma de consulta que não existia: **buscar por proximidade** em vez de por igualdade.
+
+A ideia: representar cada item por uma lista de números — um **embedding** — em que a posição no espaço carrega significado. Itens parecidos ficam próximos. A consulta então pede "os N mais próximos deste ponto".
+
+Vamos montar um exemplo minúsculo e explícito, com três dimensões inventadas: **portabilidade**, **uso pessoal** e **cozinha**.
+
+```sh
+cql "
+CREATE TABLE lab.produto_similar (
+    produto         text PRIMARY KEY,
+    categoria       text,
+    caracteristicas vector<float, 3>
+);"
+
+```
+
+O índice é SAI, o mesmo da seção 9:
+
+```sh
+cql "CREATE INDEX ON lab.produto_similar(caracteristicas) USING 'sai';"
+
+```
+
+```
+Warnings :
+SAI ANN indexes on vector columns are experimental and are not recommended for production use.
+They don't yet support SELECT queries with:
+ * Consistency level higher than ONE/LOCAL_ONE.
+ * Paging.
+ * No LIMIT clauses.
+ * PER PARTITION LIMIT clauses.
+ * GROUP BY clauses.
+ * Aggregation functions.
+ * Filters on columns without a SAI index.
+```
+
+Leia esse aviso: na 5.0 a busca vetorial é **experimental**, e a lista de restrições é concreta. Duas delas valem destacar — consulta vetorial exige `LIMIT` (a terceira linha diz que consultas *sem* `LIMIT` não são suportadas) e não funciona com consistency level acima de `LOCAL_ONE`, o que a torna inadequada a caso de uso que exija leitura forte. Não é erro: é o Cassandra dizendo em que estágio o recurso está.
+
+```sh
+cql "
+INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('NOTEBOOK',       'informatica',  [0.9, 0.9, 0.0]);
+INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('TABLET',         'informatica',  [1.0, 0.8, 0.0]);
+INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('COMPUTADOR',     'informatica',  [0.1, 0.9, 0.0]);
+INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('CELULAR',        'telefonia',    [1.0, 0.6, 0.1]);
+INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('GELADEIRA',      'linha branca', [0.0, 0.1, 1.0]);
+INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('LIQUIDIFICADOR', 'linha branca', [0.1, 0.1, 0.9]);"
+
+```
+
+Agora a consulta nova. `ANN` é *Approximate Nearest Neighbor* — "os vizinhos mais próximos", aproximadamente:
+
+```sh
+cql "
+SELECT produto, categoria, similarity_cosine(caracteristicas, [0.9, 0.9, 0.0]) AS similaridade
+FROM lab.produto_similar
+ORDER BY caracteristicas ANN OF [0.9, 0.9, 0.0]
+LIMIT 4;"
+
+```
+
+```
+ produto    | categoria   | similaridade
+------------+-------------+--------------
+   NOTEBOOK | informatica |            1
+     TABLET | informatica |     0.996942
+    CELULAR |   telefonia |     0.983298
+ COMPUTADOR | informatica |     0.890434
+
+(4 rows)
+```
+
+Perguntamos "o que é parecido com um notebook?" sem nenhum `WHERE`, e sem que o banco soubesse o que é um notebook. Os dois eletrodomésticos de cozinha nem apareceram entre os quatro primeiros. Faça a pergunta do outro lado do espaço:
+
+```sh
+cql "
+SELECT produto, categoria, similarity_cosine(caracteristicas, [0.0, 0.1, 1.0]) AS similaridade
+FROM lab.produto_similar
+ORDER BY caracteristicas ANN OF [0.0, 0.1, 1.0]
+LIMIT 3;"
+
+```
+
+```
+ produto        | categoria    | similaridade
+----------------+--------------+--------------
+      GELADEIRA | linha branca |            1
+ LIQUIDIFICADOR | linha branca |     0.996949
+        CELULAR |    telefonia |     0.568009
+```
+
+### Três coisas a observar
+
+**A dimensão faz parte do tipo.** `vector<float, 3>` só aceita vetores de exatamente três posições:
+
+> **Provoque este erro.**
+
+```sh
+cql "SELECT produto FROM lab.produto_similar ORDER BY caracteristicas ANN OF [0.9, 0.9] LIMIT 1;"
+
+```
+
+```
+InvalidRequest: ... "Invalid vector literal for caracteristicas of type vector<float, 3>..."
+```
+
+**A função de similaridade importa, e é uma decisão.** O padrão é cosseno, que compara **direção** e ignora **magnitude**. Foi por isso que escolhemos vetores em que cada dimensão significa algo: com valores arbitrários, um item de valores pequenos pode sair mais "parecido" que um item semanticamente próximo, simplesmente porque aponta na mesma direção. As alternativas são `dot_product` e `euclidean`, declaráveis na criação do índice.
+
+**O "aproximado" do ANN é real.** A busca não garante os vizinhos exatos: ela troca precisão por velocidade, o que é o que torna viável pesquisar entre milhões de vetores. Para seis linhas, o resultado é exato.
+
+### Onde isso se usa
+
+Embeddings de verdade não são inventados à mão: vêm de um modelo que transforma texto, imagem ou áudio em algumas centenas ou milhares de dimensões. O que este apêndice mostra é o lado do banco — como armazenar, indexar e consultar por proximidade.
+
+Vale notar o que **não** mudou: `produto` continua sendo a partition key, e a busca vetorial continua sendo um índice SAI, com a limitação da seção 9 — ela pergunta a todos os nós. Tudo o que você aprendeu na Parte II continua valendo.
+
+E vale repetir o aviso do próprio Cassandra: na 5.0 isso é experimental. Serve para conhecer o mecanismo e para prototipar; não para sustentar um produto.
+
+Limpando:
+
+```sh
+cql "DROP TABLE lab.produto_similar;"
+
+```
 
 ## B. Encerrando o ambiente
 
@@ -2048,18 +2258,137 @@ O `-v` remove também o volume de dados. Como as duas keyspaces são recriadas e
 
 ## C. Troubleshooting
 
-> Em elaboração (fase A6).
-
-Enquanto isso, para verificar o ambiente:
+Antes de qualquer coisa, rode a verificação — ela costuma responder sozinha:
 
 ```sh
-bash scripts/check.sh
+curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/revisao-julho2026/scripts/check.sh | bash
 
 ```
 
+### `cql: command not found`
+
+Os `alias` valem só no terminal em que foram definidos. Abriu outro, ou fechou e reabriu? Defina de novo:
+
+```sh
+alias cql='docker exec -it cassandra-database cqlsh -e'
+alias nt='docker exec -it cassandra-database nodetool'
+alias cass='docker exec -it cassandra-database'
+
+```
+
+O mesmo vale para a variável `$DIR` da seção 6.
+
+### `Error response from daemon: No such container: cassandra-database`
+
+O ambiente não está no ar. No diretório onde você baixou o `compose.yaml`:
+
+```sh
+docker compose up -d
+
+```
+
+### `Server is not initialized yet, cannot run nodetool`
+
+O Cassandra ainda está subindo. Espere e repita. Para acompanhar:
+
+```sh
+docker logs -f cassandra-database
+
+```
+
+### `NoHostAvailable` ao conectar pelo driver
+
+O driver roda no host e precisa da porta 9042 publicada. Confira:
+
+```sh
+docker port cassandra-database
+
+```
+
+```
+9042/tcp -> 0.0.0.0:9042
+```
+
+Se não aparecer nada, seu `compose.yaml` é a versão antiga, sem a seção `ports`. Baixe de novo.
+
+### `keyspace ecommerce does not exist` (ou `infobarbank`)
+
+Os containers de carga falharam ou ainda estão rodando. Veja o que dizem:
+
+```sh
+docker compose logs cassandra-init-infobarbank cassandra-init-ecommerce
+
+```
+
+Se um deles terminou com erro, rode de novo apenas ele:
+
+```sh
+docker compose up cassandra-init-ecommerce
+
+```
+
+### `Address already in use` ao subir o ambiente
+
+Outro processo já ocupa a 9042 — provavelmente um Cassandra de outro laboratório. Encontre:
+
+```sh
+docker ps --filter publish=9042
+
+```
+
+E pare o container que aparecer, ou remova a seção `ports` do `compose.yaml` (você perde a Parte III).
+
+### Os resultados não batem com o texto
+
+Confira nesta ordem:
+
+1. **Competência.** Os lançamentos e pedidos são gerados em relação à data em que você criou o ambiente. Use `SELECT DISTINCT` para descobrir as suas, e prefira uma competência fechada — a mais recente é o mês corrente.
+2. **Cliente.** No `infobarbank`, sete das cinquenta clientes têm conta, cartões e lançamentos: `2b162060`, `2b16242a`, `2b16256a`, `2b16353c`, `2b1636ae`, `2b16396a`, `2b163bcc`.
+3. **Valores que sempre variam.** `Host ID`, endereço IP, `Load`, UUID do diretório da tabela, timestamps, e o tamanho do `Data.db` em um ou dois bytes.
+4. **Numeração das SSTables.** Se você fez um flush a mais, seus arquivos não serão `nb-1` a `nb-4`. Use os nomes que o `ls` mostrar.
+
+### Recomeçar do zero
+
+```sh
+docker compose down -v
+
+```
+
+```sh
+docker compose up -d
+
+```
+
+Leva pouco mais de um minuto e não deixa resíduo. Não hesite: nada neste laboratório merece ser preservado.
+
+### O tamanho da tabela em disco não diminui depois do `DELETE`
+
+Não é problema — é a seção 6. Veja `gc_grace_seconds`.
+
 ## D. Nota para o instrutor
 
-> Em elaboração (fase A6).
+**Dosagem.** As seções 1 a 6 cabem em uma aula de 90 minutos e formam um bloco fechado: o aluno sai sabendo criar keyspace e tabela, e sabendo o que acontece com o dado no disco. As seções 7 a 10 pedem outra aula. A Parte IV é trabalho de casa.
+
+**Onde a turma trava.** No material anterior, o ponto de ruptura era a troca de contexto: entrar no container na seção 2, sair na 6, voltar na 7. Isso deixou de existir — tudo roda do host via `alias`. O novo ponto de atenção é mais brando: alunos que abrem um segundo terminal perdem os `alias` e a variável `$DIR`. Está no troubleshooting.
+
+**Dados relativos à data.** Os lançamentos do `infobarbank` e os pedidos do `ecommerce` são gerados em função de quando o ambiente foi criado, então as competências mudam a cada turma. Por isso o laboratório sempre **descobre** as competências em vez de fixá-las, e por isso o enunciado do trabalho não deve nomear meses. Vale conferir na véspera qual é a penúltima competência e usá-la nos exemplos em sala.
+
+**A competência mais recente é parcial.** O gerador do `infobarbank` distribui lançamentos nos últimos 365 dias, o que inclui o mês corrente. Na seção 8 isso é apresentado como característica de base de produção, não como defeito — e é bom que apareça, porque é o tipo de detalhe que derruba relatório em produção.
+
+**Cobertura de dados no `infobarbank`.** Sete das cinquenta clientes têm conta corrente, e quatro têm cartão. Se for escolher outra cliente para demonstrar em sala, use uma da lista da seção 10. As demais existem em `cliente` e nas tabelas de acesso alternativo, mas não têm movimento.
+
+**CPFs repetidos no `infobarbank`.** Dez CPFs são compartilhados por trinta clientes — resultado de como a lista de personas foi montada. Consultar `cliente_por_cpf` por um desses CPFs devolve várias pessoas. O CPF da Marivalda é único, e é o usado nos exemplos. No `ecommerce` os CPFs foram desduplicados.
+
+**O que este laboratório deliberadamente não faz.** Cluster. Tokens aparecem na seção 5 e replicação na seção 3, mas nada de derrubar nós, `nodetool repair` ou consistency level sob falha — isso exige réplicas de verdade e tem laboratório próprio. Demonstrar `QUORUM` falhando com `RF=3` em um nó é uma configuração que ninguém usa, e abre uma pergunta que este laboratório não responde.
+
+**Trabalho final.** O enunciado da Parte IV avalia a **justificativa**, não o resultado. Numa base de doze mil pedidos, várias tabelas devolvem a mesma resposta; só uma responde com leitura pontual. Se a turma entregar apenas CQL que funciona, a nota não distingue nada.
+
+Duas observações sobre o gabarito:
+
+- O repositório [cassandra-gerador-esquema-ecommerce](https://github.com/infobarbosa/cassandra-gerador-esquema-ecommerce) documenta, no `README.md`, a correspondência entre as tabelas da loja e as do banco. Isso é útil para você e é um spoiler parcial para o aluno — parcial porque o que se avalia é a escolha da tabela para cada consulta, e essa lista não a entrega pronta. Se preferir, o arquivo pode ser enxugado.
+- As duas perguntas de discussão no fim do enunciado não têm resposta no modelo: a primeira exige uma tabela que não existe (`valor_total` como clustering key), a segunda descreve o anti-pattern de partição gigante. São para debate, não para código.
+
+**Aprofundamento.** Para modelagem em escala real — 18,5 milhões de registros, partições de 224 MB, `ReadTimeout` por partição grande demais — o laboratório seguinte é o [cassandra-datamodeling-lab](https://github.com/infobarbosa/cassandra-datamodeling-lab).
 
 ---
 
@@ -2075,7 +2404,7 @@ Esta branch reformula o laboratório, que antes estava dividido em sete subdiret
 | **Cassandra 5 entra** | O laboratório se chamava `cassandra5` e não usava nenhum recurso da versão 5. Entram SAI, UCS e busca vetorial. |
 | **Modelagem é o centro** | O modelo do `infobarbank` deixa de ser cenário e passa a ser o objeto: cada uma das doze tabelas é lida a partir da consulta que a motivou. |
 
-Fases: **A0** estrutura · **A1** seções 1–3 (feitas) · A2 seções 4–5 · A3 seção 6 · A4 seções 7–9 · A5 seção 10 · A6 seção 11 e apêndices · A7 execução completa em ambiente limpo, com todos os outputs regerados.
+Fases A0 a A6 concluídas — todo o conteúdo está escrito. Falta a **A7**: execução completa em ambiente criado do zero, seguindo o texto do começo ao fim, com todos os outputs regerados de uma só passada.
 
 ### Pendências da revisão
 
