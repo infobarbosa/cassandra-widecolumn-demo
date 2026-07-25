@@ -4,8 +4,7 @@ Author: Prof. Barbosa<br>
 Contact: infobarbosa@gmail.com<br>
 Github: [infobarbosa](https://github.com/infobarbosa)
 
-> **Esta branch está em revisão.** O laboratório em uso está na branch `main`.
-> Ver o [plano de revisão](#plano-de-revisão) ao final para o que já está pronto.
+> **Esta branch reformula o laboratório.** O que mudou e por quê está no [plano de revisão](#plano-de-revisão), ao final.
 
 [Cassandra](https://cassandra.apache.org/) é um banco de dados distribuído com modelo de armazenamento **wide-column**. Neste laboratório você vai construir uma tabela do zero, acompanhar o dado descer até o disco, descobrir o limite de consulta que o Cassandra impõe — e então ver como um sistema real resolve esse limite.
 
@@ -722,7 +721,7 @@ echo $DIR
 ```
 
 ```
-/var/lib/cassandra/data/lab/cliente-c9940ef0885411f1896db93ac98379bd
+/var/lib/cassandra/data/lab/cliente-547a6700885d11f192528d1521edebb1
 ```
 
 O caminho é `keyspace/tabela-uuid`, e o UUID é sorteado na criação da tabela — o do seu ambiente será outro. Guardamos em `$DIR` para não repetir esse nome enorme.
@@ -750,8 +749,8 @@ cass ls -la /var/lib/cassandra/commitlog/
 ```
 
 ```
--rw-r--r-- 1 cassandra cassandra 33554432 Jul 25 18:01 CommitLog-7-1785001531318.log
--rw-r--r-- 1 cassandra cassandra 33554432 Jul 25 17:45 CommitLog-7-1785001531319.log
+-rw-r--r-- 1 cassandra cassandra 33554432 Jul 25 19:16 CommitLog-7-1785006544169.log
+-rw-r--r-- 1 cassandra cassandra 33554432 Jul 25 19:16 CommitLog-7-1785006544170.log
 ```
 
 Os 32 MB de cada arquivo são **pré-alocados**: o tamanho não diz nada sobre quanto dado existe. O Cassandra reserva o espaço adiantado justamente para que a escrita seja uma gravação sequencial no fim de um arquivo que já está lá.
@@ -764,10 +763,10 @@ cass sh -c "grep --text -o 'FANTASMA' /var/lib/cassandra/commitlog/*.log"
 ```
 
 ```
-FANTASMA
+/var/lib/cassandra/commitlog/CommitLog-7-1785006544169.log:FANTASMA
 ```
 
-E o e-mail que você atualizou:
+O `grep` informa em qual dos arquivos encontrou — os nomes serão outros no seu ambiente, porque incluem o instante de criação do segmento. E o e-mail que você atualizou:
 
 ```sh
 cass sh -c "grep --text -o 'aldenora.moreira@bmail.com' /var/lib/cassandra/commitlog/*.log"
@@ -775,7 +774,7 @@ cass sh -c "grep --text -o 'aldenora.moreira@bmail.com' /var/lib/cassandra/commi
 ```
 
 ```
-aldenora.moreira@bmail.com
+/var/lib/cassandra/commitlog/CommitLog-7-1785006544169.log:aldenora.moreira@bmail.com
 ```
 
 Está tudo ali, em texto claro. Agora experimente com um nome:
@@ -786,13 +785,15 @@ cass sh -c "grep -c --text 'MARIVALDA' /var/lib/cassandra/commitlog/*.log"
 ```
 
 ```
-/var/lib/cassandra/commitlog/CommitLog-7-1785001531318.log:9
-/var/lib/cassandra/commitlog/CommitLog-7-1785001531319.log:0
+/var/lib/cassandra/commitlog/CommitLog-7-1785006544169.log:9
+/var/lib/cassandra/commitlog/CommitLog-7-1785006544171.log:0
 ```
 
 Nove ocorrências, e você inseriu a Marivalda uma vez. O motivo: **o commit log é do nó, não da tabela**. Ele recebe as escritas de todas as tabelas de todas as keyspaces, em um único fluxo sequencial — e a Marivalda também é cliente do `infobarbank` e da loja `ecommerce`, cada um com suas tabelas.
 
 Isso responde por que a escrita não fica mais lenta conforme você cria tabelas: há um só arquivo recebendo tudo, e nunca uma busca por posição.
+
+> O número que você vai ver depende de **quanto tempo faz que o ambiente subiu**. O commit log não é histórico permanente: quando todas as tabelas de um segmento já descarregaram seus dados em SSTables, o Cassandra recicla aquele segmento. Se você criou o ambiente agora, as escritas das duas keyspaces do curso ainda estão lá e a contagem é 9. Algumas horas depois, elas terão sido recicladas e sobra só a sua — o que é a mesma lição vista de outro ângulo: o commit log existe para sobreviver a uma queda, não para guardar histórico.
 
 > **Durabilidade.** Se o processo morrer agora, a memtable se perde — mas o commit log não. Na volta, o Cassandra o relê e reconstrói a memtable. É esse arquivo que faz da escrita algo confirmado, não o arquivo de dados.
 
@@ -812,14 +813,14 @@ cass ls -la $DIR
 
 ```
 total 44
--rw-r--r-- 1 cassandra cassandra   47 Jul 25 18:15 nb-1-big-CompressionInfo.db
--rw-r--r-- 1 cassandra cassandra  338 Jul 25 18:15 nb-1-big-Data.db
--rw-r--r-- 1 cassandra cassandra   10 Jul 25 18:15 nb-1-big-Digest.crc32
--rw-r--r-- 1 cassandra cassandra   24 Jul 25 18:15 nb-1-big-Filter.db
--rw-r--r-- 1 cassandra cassandra   78 Jul 25 18:15 nb-1-big-Index.db
--rw-r--r-- 1 cassandra cassandra 4973 Jul 25 18:15 nb-1-big-Statistics.db
--rw-r--r-- 1 cassandra cassandra   68 Jul 25 18:15 nb-1-big-Summary.db
--rw-r--r-- 1 cassandra cassandra   92 Jul 25 18:15 nb-1-big-TOC.txt
+-rw-r--r-- 1 cassandra cassandra   47 Jul 25 19:16 nb-1-big-CompressionInfo.db
+-rw-r--r-- 1 cassandra cassandra  338 Jul 25 19:16 nb-1-big-Data.db
+-rw-r--r-- 1 cassandra cassandra   10 Jul 25 19:16 nb-1-big-Digest.crc32
+-rw-r--r-- 1 cassandra cassandra   24 Jul 25 19:16 nb-1-big-Filter.db
+-rw-r--r-- 1 cassandra cassandra   78 Jul 25 19:16 nb-1-big-Index.db
+-rw-r--r-- 1 cassandra cassandra 4973 Jul 25 19:16 nb-1-big-Statistics.db
+-rw-r--r-- 1 cassandra cassandra   68 Jul 25 19:16 nb-1-big-Summary.db
+-rw-r--r-- 1 cassandra cassandra   92 Jul 25 19:16 nb-1-big-TOC.txt
 ```
 
 > O `Data.db` do seu ambiente pode ter um ou dois bytes de diferença. Os timestamps de cada escrita são gravados dentro do arquivo, em codificação de largura variável, e a sua execução aconteceu em outro instante.
@@ -848,27 +849,20 @@ cass sh -c "od -A d -t x1z -v $DIR/nb-1-big-Data.db"
 
 ```
 0000000 99 01 00 00 f2 01 00 08 32 62 31 36 33 36 61 65  >........2b1636ae<
-0000016 7f ff ff ff 80 00 01 00 f2 33 24 3f 16 8a b7 08  >.........3$?....<
+0000016 7f ff ff ff 80 00 01 00 f2 33 24 3f 16 8a 8f 08  >.........3$?....<
 0000032 0e 37 39 37 2e 33 39 39 2e 35 32 30 2d 30 33 08  >.797.399.520-03.<
 0000048 0e 76 65 72 61 40 62 6d 61 69 6c 2e 63 6f 6d 08  >.vera@bmail.com.<
 0000064 04 56 45 52 41 08 14 4c 55 43 49 41 20 52 4f 44  >.VERA..LUCIA ROD<
 0000080 52 49 47 55 45 53 20 53 45 4e 41 01 58 00 4b 32  >RIGUES SENA.X.K2<
-0000096 34 32 61 58 00 f7 0d 83 a3 08 0e 31 32 34 2e 35  >42aX.......124.5<
+0000096 34 32 61 58 00 f7 0d 83 94 08 0e 31 32 34 2e 35  >42aX.......124.5<
 0000112 35 34 2e 32 36 30 2d 35 30 08 12 6a 75 63 69 6c  >54.260-50..jucil<
 0000128 65 6e 65 5c 00 f4 21 08 4a 55 43 49 4c 45 4e 45  >ene\..!.JUCILENE<
 0000144 08 0c 4d 4f 52 45 49 52 41 20 43 52 55 5a 01 00  >..MOREIRA CRUZ..<
-0000160 0a 4e 41 4f 2d 45 58 49 53 54 45 6a 64 fd 36 00  >.NAO-EXISTEjd.6.<
-0000176 06 57 73 78 b9 6f 2a 71 00 35 35 36 61 17 00 33  >.Wsx.o*q.556a..3<
-0000192 bf ed a1 17 00 49 33 35 33 63 88 00 f9 18 4b 16  >.....I353c....K.<
-0000208 88 63 08 0e 35 39 38 2e 31 33 31 2e 33 33 30 2d  >.c..598.131.330-<
-0000224 37 34 00 c7 3b 01 1a 61 6c 64 65 6e 6f 72 61 2e  >74..;..aldenora.<
-0000240 6d 6f 72 65 69 ef 00 f3 02 08 41 4c 44 45 4e 4f  >morei.....ALDENO<
-0000256 52 41 08 0d 56 49 41 4e 41 20 99 00 03 64 00 49  >RA..VIANA ...d.I<
-0000272 32 30 36 30 64 00 f8 0e 3c 16 00 08 0e 39 38 37  >2060d...<....987<
-0000288 2e 35 33 39 2e 33 36 30 2d 36 30 08 13 6d 61 72  >.539.360-60..mar<
-0000304 69 76 61 6c 64 48 01 f0 06 09 4d 41 52 49 56 41  >ivaldH....MARIVA<
-0000320 4c 44 41 08 08 4b 41 4e 41 4d 41 52 59 01 ec 56  >LDA..KANAMARY..V<
-0000336 65 e9                                            >e.<
+0000160 0a 4e 41 4f 2d 45 58 49 53 54 45 6a 65 0b 8b 00  >.NAO-EXISTEje...<
+0000176 06 57 74 53 69 9b c3 71 00 35 35 36 61 17 00 33  >.WtSi..q.556a..3<
+[... 10 linhas ...]
+0000320 4c 44 41 08 08 4b 41 4e 41 4d 41 52 59 01 5c 28  >LDA..KANAMARY.\(<
+0000336 8e a6                                            >..<
 0000338
 ```
 
@@ -898,7 +892,7 @@ Procure a Gracimar, `2b16256a`, e a linha fantasma:
     "partition" : {
       "key" : [ "NAO-EXISTE" ],
       "position" : 200,
-      "deletion_info" : { "marked_deleted" : "2026-07-25T18:15:18.538026Z", "local_delete_time" : "2026-07-25T18:15:18Z" }
+      "deletion_info" : { "marked_deleted" : "2026-07-25T19:16:27.516867Z", "local_delete_time" : "2026-07-25T19:16:27Z" }
     },
     "rows" : [ ]
   },
@@ -906,7 +900,7 @@ Procure a Gracimar, `2b16256a`, e a linha fantasma:
     "partition" : {
       "key" : [ "2b16256a" ],
       "position" : 223,
-      "deletion_info" : { "marked_deleted" : "2026-07-25T18:15:18.963617Z", "local_delete_time" : "2026-07-25T18:15:18Z" }
+      "deletion_info" : { "marked_deleted" : "2026-07-25T19:16:27.951731Z", "local_delete_time" : "2026-07-25T19:16:27Z" }
     },
     "rows" : [ ]
   },
@@ -937,7 +931,7 @@ cass sh -c "ls -l $DIR/nb-1-big-Data.db; grep -c --text IVONE $DIR/nb-1-big-Data
 ```
 
 ```
--rw-r--r-- 1 cassandra cassandra 338 Jul 25 18:15 .../nb-1-big-Data.db
+-rw-r--r-- 1 cassandra cassandra 338 Jul 25 19:16 .../nb-1-big-Data.db
 0
 ```
 
@@ -1016,7 +1010,7 @@ cass sh -c "ls -l $DIR/*-Data.db | awk '{print \$5, \$NF}'"
 ```
 
 ```
-632 .../nb-4-big-Data.db
+630 .../nb-4-big-Data.db
 ```
 
 Três arquivos viraram um. Isso é **compactação**, e o conceito por trás dela é a [Log-structured merge-tree](https://en.wikipedia.org/wiki/Log-structured_merge-tree), a **LSM tree**: escreve-se sempre em arquivo novo, e a consolidação acontece depois, em segundo plano.
@@ -1032,23 +1026,23 @@ cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-4-big-Data.db"
 
 ```json
       "key" : [ "2b162060" ],
-      "position" : 440
+      "position" : 439
     },
     "rows" : [
       {
         "type" : "row",
-        "liveness_info" : { "tstamp" : "2026-07-25T18:15:17.198812Z" },
+        "liveness_info" : { "tstamp" : "2026-07-25T19:16:26.203224Z" },
         "cells" : [
           { "name" : "cpf", "value" : "987.539.360-60" },
           { "name" : "email", "value" : "marivalda@bmail.com" },
           { "name" : "nome", "value" : "MARIVALDA" },
-          { "name" : "sobrenome", "value" : "DE ALCÂNTARA [...] BOURBON KANAMARY", "tstamp" : "2026-07-25T18:21:51.103215Z" }
+          { "name" : "sobrenome", "value" : "DE ALCÂNTARA [...] BOURBON KANAMARY", "tstamp" : "2026-07-25T19:16:32.571401Z" }
         ]
       }
     ]
 ```
 
-Uma única célula `sobrenome`, com o valor novo. E repare no detalhe: ela tem **timestamp próprio**, `18:21:51`, diferente do `liveness_info` da linha, `18:15:17`. O timestamp no Cassandra é por célula, não por linha — o que explica como a compactação resolveu o conflito sem precisar de nada além dos próprios arquivos: para cada célula, vence a escrita mais recente.
+Uma única célula `sobrenome`, com o valor novo. E repare no detalhe: ela tem **timestamp próprio**, `19:16:32`, diferente do `liveness_info` da linha, `19:16:26`. O timestamp no Cassandra é por célula, não por linha — o que explica como a compactação resolveu o conflito sem precisar de nada além dos próprios arquivos: para cada célula, vence a escrita mais recente.
 
 ### O tombstone que sobreviveu
 
@@ -1059,9 +1053,9 @@ cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-4-big-Data.db" | grep -
 
 ```json
       "key" : [ "NAO-EXISTE" ],
-      "deletion_info" : { "marked_deleted" : "2026-07-25T18:15:18.538026Z", ... }
+      "deletion_info" : { "marked_deleted" : "2026-07-25T19:16:27.516867Z", ... }
       "key" : [ "2b16256a" ],
-      "deletion_info" : { "marked_deleted" : "2026-07-25T18:15:18.963617Z", ... }
+      "deletion_info" : { "marked_deleted" : "2026-07-25T19:16:27.951731Z", ... }
 ```
 
 A compactação descartou o sobrenome antigo da Marivalda, mas **manteve os dois tombstones**. Por quê?
@@ -1229,27 +1223,55 @@ cql "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_pe
 [...]
 ```
 
-Use a **penúltima** competência nos exemplos, não a mais recente. Compare:
+Use uma competência **do meio da lista** nos exemplos — nem a primeira, nem a última. O motivo aparece ao olhar a data do último lançamento de cada uma:
 
 ```sh
-cql "SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
+cql "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
 
 ```
 
 ```
-    19
+ 2026-06-29 19:10:14.797000+0000
 ```
 
 ```sh
-cql "SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-07';"
+cql "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-07';"
 
 ```
 
 ```
-    11
+ 2026-07-25 19:10:15.437000+0000
 ```
 
-A competência mais recente é o **mês corrente**, e portanto está pela metade — hoje é dia 25. Não é defeito do laboratório: é o que acontece em qualquer base de produção, onde o mês em curso sempre tem menos movimento que os fechados. Nos exemplos a seguir aparece `2026-06`; troque pela penúltima competência do seu ambiente.
+A última competência para no dia **25** — que é hoje. Ela é o **mês corrente**, e por isso cobre um mês incompleto. A primeira da lista tem o problema simétrico:
+
+```sh
+cql "SELECT min(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2025-07';"
+
+```
+
+```
+ 2025-07-26 19:10:12.988000+0000
+```
+
+Começa no dia 26, porque os lançamentos foram distribuídos nos últimos 365 dias — e 365 dias atrás era o dia 26 do mês. **As duas pontas da série são parciais.**
+
+Não é defeito do laboratório: é o que acontece em qualquer base de produção, e é o tipo de detalhe que derruba relatório — um gráfico de movimento por mês mostra queda no mês corrente todos os meses, e quem não souber disso vai procurar explicação de negócio para um artefato do calendário.
+
+> Note que a **contagem** de lançamentos pode não denunciar isso: os lançamentos são sorteados, e um mês incompleto pode acabar com mais registros que um mês fechado. O que denuncia é a data, não o volume.
+
+Nos exemplos a seguir aparece `2026-06`; troque por uma competência intermediária do seu ambiente.
+
+### O que é igual e o que é diferente no seu ambiente
+
+Vale saber antes de comparar resultados:
+
+| | |
+|---|---|
+| **Igual em qualquer ambiente** | as cinquenta clientes, com nome, CPF, e-mail e telefone; as contas correntes e os cartões, com números, limites e saldos |
+| **Sorteado a cada ambiente** | todos os lançamentos — data, valor, estabelecimento, `id_lancamento` e a conta ou cartão que os originou |
+
+Ou seja: os resultados de Q1 e Q2 abaixo devem coincidir com os seus. Os de Q3 a Q7, não — a forma da resposta é a mesma, os valores são outros.
 
 ### 8.1 Partition key de coluna única
 
@@ -1561,10 +1583,10 @@ Nas linhas do rastro, duas importam:
 
 ```
 Executing single-partition query on lancamentos_por_periodo
-Read 19 live rows and 0 tombstone cells
+Read 26 live rows and 0 tombstone cells
 ```
 
-**Uma partição, 19 linhas lidas.** Agora a mesma pergunta, sem informar a cliente, forçando o filtro:
+**Uma partição, 26 linhas lidas.** Agora a mesma pergunta, sem informar a cliente, forçando o filtro:
 
 ```sh
 cql "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE competencia='2026-06' ALLOW FILTERING;"
@@ -1573,12 +1595,12 @@ cql "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE 
 
 ```
 Computing ranges to query
-Submitting range requests on 17 ranges with a concurrency of 1 (169.92 rows per range expected)
+Submitting range requests on 17 ranges with a concurrency of 1 (172.8 rows per range expected)
 Executing seq scan across 1 sstables for (min(-9223372036854775808), min(-9223372036854775808)]
-Read 170 live rows and 0 tombstone cells
+Read 171 live rows and 0 tombstone cells
 ```
 
-Não é mais uma consulta a uma partição: é uma **varredura sequencial** de todo o anel de tokens, de -2⁶³ a 2⁶³-1, para depois descartar o que não bate. Leu 170 linhas para devolver 86.
+Não é mais uma consulta a uma partição: é uma **varredura sequencial** de todo o anel de tokens, de -2⁶³ a 2⁶³-1, para depois descartar o que não bate. Leu 171 linhas para devolver as que interessavam.
 
 O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas respondem instantaneamente. É por isso que o Cassandra recusa por padrão em vez de deixar você descobrir — a consulta que varre mil linhas em desenvolvimento varre mil vezes mais em produção, e nesse dia ela não é lenta, ela é uma varredura em todos os nós do cluster ao mesmo tempo.
 
@@ -1683,7 +1705,7 @@ Executing read on lab.cliente using index cliente_nome_sai
 Executing single-partition query on cliente
 Read 1 live rows and 0 tombstone cells
 Index query accessed memtable indexes, 1 SSTable index, and 1 segment,
-post-filtered 1 row in 1 partition, and took 910 microseconds.
+post-filtered 1 row in 1 partition, and took 1074 microseconds.
 ```
 
 A boa notícia está no fim: **1 linha lida, 1 partição** — nada de varredura sequencial como no `ALLOW FILTERING` da seção 8.6.
@@ -1844,6 +1866,8 @@ Q7 · Detalhe do lançamento cc44552e
   R$     708,41  APROVADA
   autenticação b2c5db0d-ec3c-4a13-b116-a44e1ffd8e41
 ```
+
+Como na seção 8, os valores de Q1 e Q2 devem coincidir com os seus; os lançamentos de Q3 a Q7 são sorteados por ambiente.
 
 Você pode passar outra cliente e outra competência:
 
@@ -2404,7 +2428,7 @@ Esta branch reformula o laboratório, que antes estava dividido em sete subdiret
 | **Cassandra 5 entra** | O laboratório se chamava `cassandra5` e não usava nenhum recurso da versão 5. Entram SAI, UCS e busca vetorial. |
 | **Modelagem é o centro** | O modelo do `infobarbank` deixa de ser cenário e passa a ser o objeto: cada uma das doze tabelas é lida a partir da consulta que a motivou. |
 
-Fases A0 a A6 concluídas — todo o conteúdo está escrito. Falta a **A7**: execução completa em ambiente criado do zero, seguindo o texto do começo ao fim, com todos os outputs regerados de uma só passada.
+Todas as fases concluídas. O laboratório foi executado de ponta a ponta em ambiente criado do zero, na ordem do texto, e os outputs colados vêm dessa passada.
 
 ### Pendências da revisão
 
