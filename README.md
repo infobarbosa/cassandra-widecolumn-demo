@@ -697,7 +697,401 @@ O que muda quando a `PRIMARY KEY` tem mais colunas é o centro da Parte II. Por 
 
 ## 6. Do memtable ao disco
 
-> Em elaboração (fase A3).
+Quando você executou aqueles `INSERT`, o Cassandra fez duas coisas e só então respondeu:
+
+1. gravou a operação no fim do **commit log**, um arquivo sequencial;
+2. aplicou a mudança na **memtable**, uma estrutura em memória.
+
+Só isso. Nenhuma escrita em arquivo de dados, nenhuma leitura do que já existia, nenhuma procura por onde encaixar a linha. É por esse motivo que a escrita no Cassandra é rápida — e é por isso que ela é rápida *igualmente*, com dez linhas ou dez bilhões.
+
+Nesta seção vamos acompanhar o resto do caminho: da memtable até o disco, e daí até a compactação.
+
+Um terceiro atalho, só para esta seção, porque vamos olhar arquivos:
+
+```sh
+alias cass='docker exec -it cassandra-database'
+
+```
+
+### Onde a tabela mora no disco
+
+```sh
+DIR=$(docker exec cassandra-database sh -c 'ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1')
+echo $DIR
+
+```
+
+```
+/var/lib/cassandra/data/lab/cliente-c9940ef0885411f1896db93ac98379bd
+```
+
+O caminho é `keyspace/tabela-uuid`, e o UUID é sorteado na criação da tabela — o do seu ambiente será outro. Guardamos em `$DIR` para não repetir esse nome enorme.
+
+> O `| tail -1` não é decoração. Um `DROP TABLE` não remove o diretório: ele guarda um snapshot e deixa a pasta antiga no lugar. Se você recriar a tabela, passam a existir dois diretórios `cliente-*`, e sem o `tail -1` a variável receberia os dois caminhos de uma vez. Pegando sempre o mais recente, o comando funciona quantas vezes você repetir esta seção.
+
+```sh
+cass ls -la $DIR
+
+```
+
+```
+total 8
+drwxr-xr-x 2 cassandra cassandra 4096 Jul 25 17:50 .
+drwxr-xr-x 3 cassandra cassandra 4096 Jul 25 17:50 ..
+```
+
+**Vazio.** Você inseriu cinco clientes, atualizou um, apagou dois, e consultou tudo isso com sucesso — e não existe um único arquivo de dados. Onde está?
+
+### No commit log
+
+```sh
+cass ls -la /var/lib/cassandra/commitlog/
+
+```
+
+```
+-rw-r--r-- 1 cassandra cassandra 33554432 Jul 25 18:01 CommitLog-7-1785001531318.log
+-rw-r--r-- 1 cassandra cassandra 33554432 Jul 25 17:45 CommitLog-7-1785001531319.log
+```
+
+Os 32 MB de cada arquivo são **pré-alocados**: o tamanho não diz nada sobre quanto dado existe. O Cassandra reserva o espaço adiantado justamente para que a escrita seja uma gravação sequencial no fim de um arquivo que já está lá.
+
+Procure algo que só existe por causa do que você fez na seção 4 — a linha fantasma do upsert:
+
+```sh
+cass sh -c "grep --text -o 'FANTASMA' /var/lib/cassandra/commitlog/*.log"
+
+```
+
+```
+FANTASMA
+```
+
+E o e-mail que você atualizou:
+
+```sh
+cass sh -c "grep --text -o 'aldenora.moreira@bmail.com' /var/lib/cassandra/commitlog/*.log"
+
+```
+
+```
+aldenora.moreira@bmail.com
+```
+
+Está tudo ali, em texto claro. Agora experimente com um nome:
+
+```sh
+cass sh -c "grep -c --text 'MARIVALDA' /var/lib/cassandra/commitlog/*.log"
+
+```
+
+```
+/var/lib/cassandra/commitlog/CommitLog-7-1785001531318.log:9
+/var/lib/cassandra/commitlog/CommitLog-7-1785001531319.log:0
+```
+
+Nove ocorrências, e você inseriu a Marivalda uma vez. O motivo: **o commit log é do nó, não da tabela**. Ele recebe as escritas de todas as tabelas de todas as keyspaces, em um único fluxo sequencial — e a Marivalda também é cliente do `infobarbank` e da loja `ecommerce`, cada um com suas tabelas.
+
+Isso responde por que a escrita não fica mais lenta conforme você cria tabelas: há um só arquivo recebendo tudo, e nunca uma busca por posição.
+
+> **Durabilidade.** Se o processo morrer agora, a memtable se perde — mas o commit log não. Na volta, o Cassandra o relê e reconstrói a memtable. É esse arquivo que faz da escrita algo confirmado, não o arquivo de dados.
+
+### Ciclo 1 — o flush
+
+`nodetool flush` força a memtable a descer para o disco:
+
+```sh
+cass nodetool flush lab cliente
+
+```
+
+```sh
+cass ls -la $DIR
+
+```
+
+```
+total 44
+-rw-r--r-- 1 cassandra cassandra   47 Jul 25 18:15 nb-1-big-CompressionInfo.db
+-rw-r--r-- 1 cassandra cassandra  338 Jul 25 18:15 nb-1-big-Data.db
+-rw-r--r-- 1 cassandra cassandra   10 Jul 25 18:15 nb-1-big-Digest.crc32
+-rw-r--r-- 1 cassandra cassandra   24 Jul 25 18:15 nb-1-big-Filter.db
+-rw-r--r-- 1 cassandra cassandra   78 Jul 25 18:15 nb-1-big-Index.db
+-rw-r--r-- 1 cassandra cassandra 4973 Jul 25 18:15 nb-1-big-Statistics.db
+-rw-r--r-- 1 cassandra cassandra   68 Jul 25 18:15 nb-1-big-Summary.db
+-rw-r--r-- 1 cassandra cassandra   92 Jul 25 18:15 nb-1-big-TOC.txt
+```
+
+> O `Data.db` do seu ambiente pode ter um ou dois bytes de diferença. Os timestamps de cada escrita são gravados dentro do arquivo, em codificação de largura variável, e a sua execução aconteceu em outro instante.
+
+Oito arquivos, todos com o prefixo `nb-1-big`. Juntos eles formam **uma SSTable**:
+
+| Componente | Conteúdo |
+|---|---|
+| `Data.db` | as linhas propriamente ditas |
+| `Index.db` | de cada partition key para a posição dela no `Data.db` |
+| `Summary.db` | uma amostra do `Index.db`, mantida em memória |
+| `Filter.db` | o *bloom filter*: responde, sem tocar no disco, "esta chave **certamente não** está aqui" |
+| `CompressionInfo.db` | mapa dos blocos comprimidos, para conseguir ler um pedaço sem descomprimir tudo |
+| `Statistics.db` | metadados: menor e maior timestamp, faixa de tokens, histogramas |
+| `Digest.crc32` | checksum do `Data.db` |
+| `TOC.txt` | a lista dos componentes acima |
+
+### O que existe dentro do `Data.db`
+
+São pouco mais de trezentos bytes. Cabe inteiro na tela:
+
+```sh
+cass sh -c "od -A d -t x1z -v $DIR/nb-1-big-Data.db"
+
+```
+
+```
+0000000 99 01 00 00 f2 01 00 08 32 62 31 36 33 36 61 65  >........2b1636ae<
+0000016 7f ff ff ff 80 00 01 00 f2 33 24 3f 16 8a b7 08  >.........3$?....<
+0000032 0e 37 39 37 2e 33 39 39 2e 35 32 30 2d 30 33 08  >.797.399.520-03.<
+0000048 0e 76 65 72 61 40 62 6d 61 69 6c 2e 63 6f 6d 08  >.vera@bmail.com.<
+0000064 04 56 45 52 41 08 14 4c 55 43 49 41 20 52 4f 44  >.VERA..LUCIA ROD<
+0000080 52 49 47 55 45 53 20 53 45 4e 41 01 58 00 4b 32  >RIGUES SENA.X.K2<
+0000096 34 32 61 58 00 f7 0d 83 a3 08 0e 31 32 34 2e 35  >42aX.......124.5<
+0000112 35 34 2e 32 36 30 2d 35 30 08 12 6a 75 63 69 6c  >54.260-50..jucil<
+0000128 65 6e 65 5c 00 f4 21 08 4a 55 43 49 4c 45 4e 45  >ene\..!.JUCILENE<
+0000144 08 0c 4d 4f 52 45 49 52 41 20 43 52 55 5a 01 00  >..MOREIRA CRUZ..<
+0000160 0a 4e 41 4f 2d 45 58 49 53 54 45 6a 64 fd 36 00  >.NAO-EXISTEjd.6.<
+0000176 06 57 73 78 b9 6f 2a 71 00 35 35 36 61 17 00 33  >.Wsx.o*q.556a..3<
+0000192 bf ed a1 17 00 49 33 35 33 63 88 00 f9 18 4b 16  >.....I353c....K.<
+0000208 88 63 08 0e 35 39 38 2e 31 33 31 2e 33 33 30 2d  >.c..598.131.330-<
+0000224 37 34 00 c7 3b 01 1a 61 6c 64 65 6e 6f 72 61 2e  >74..;..aldenora.<
+0000240 6d 6f 72 65 69 ef 00 f3 02 08 41 4c 44 45 4e 4f  >morei.....ALDENO<
+0000256 52 41 08 0d 56 49 41 4e 41 20 99 00 03 64 00 49  >RA..VIANA ...d.I<
+0000272 32 30 36 30 64 00 f8 0e 3c 16 00 08 0e 39 38 37  >2060d...<....987<
+0000288 2e 35 33 39 2e 33 36 30 2d 36 30 08 13 6d 61 72  >.539.360-60..mar<
+0000304 69 76 61 6c 64 48 01 f0 06 09 4d 41 52 49 56 41  >ivaldH....MARIVA<
+0000320 4c 44 41 08 08 4b 41 4e 41 4d 41 52 59 01 ec 56  >LDA..KANAMARY..V<
+0000336 65 e9                                            >e.<
+0000338
+```
+
+Três coisas nesse despejo.
+
+**A primeira linha começa com `2b1636ae`**, a Vera — não a Marivalda, que foi a primeira a ser inserida. É a ordem de token da seção 5, agora materializada em bytes. Esse é o primeiro **S** de SSTable: *Sorted*.
+
+**`NAO-EXISTE` está lá, no offset 160**, e note que depois da chave não vem CPF, nem nome, nem e-mail. Você apagou aquela linha. Ela continua no arquivo, sem conteúdo.
+
+**Tudo legível.** CPF, e-mail e nome completo em texto claro, sem nenhum esforço para lê-los. O `LZ4Compressor` que apareceu no `DESCRIBE TABLE` comprime, mas não cifra — e comprime por blocos, então trechos ficam intactos. Se dado sensível precisa estar cifrado em repouso, isso é configuração de disco ou de sistema de arquivos, não algo que o Cassandra faça por você.
+
+> Se o seu ambiente tiver `hexdump` instalado, `hexdump -C` produz uma saída equivalente e um pouco mais confortável de ler. Usamos `od` porque ele já vem na imagem, e instalar pacote no meio do laboratório é atrito desnecessário.
+
+### O tombstone
+
+O hexadecimal mostra que a linha apagada está no arquivo. Para ver **o que** ela guarda, existe uma ferramenta melhor, que traduz a SSTable para JSON:
+
+```sh
+cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-1-big-Data.db"
+
+```
+
+Procure a Gracimar, `2b16256a`, e a linha fantasma:
+
+```json
+  {
+    "partition" : {
+      "key" : [ "NAO-EXISTE" ],
+      "position" : 200,
+      "deletion_info" : { "marked_deleted" : "2026-07-25T18:15:18.538026Z", "local_delete_time" : "2026-07-25T18:15:18Z" }
+    },
+    "rows" : [ ]
+  },
+  {
+    "partition" : {
+      "key" : [ "2b16256a" ],
+      "position" : 223,
+      "deletion_info" : { "marked_deleted" : "2026-07-25T18:15:18.963617Z", "local_delete_time" : "2026-07-25T18:15:18Z" }
+    },
+    "rows" : [ ]
+  },
+```
+
+Aqui está a promessa da seção 4, cumprida. A Gracimar não foi apagada: o `DELETE` **escreveu** um registro novo, uma marca de exclusão com data e hora, e é isso que se chama **tombstone**. `"rows" : [ ]` — a partição existe, sem linhas vivas.
+
+Faz sentido, dado tudo o que você viu: apagar de verdade exigiria localizar o dado e reescrever o arquivo. Num sistema em que arquivo de dados nunca é modificado, apagar é mais uma escrita. O `SELECT` da seção 4 devolveu vazio porque a leitura encontrou o tombstone e o respeitou.
+
+> O `sstabledump` fica em `/opt/cassandra/tools/bin/`, que não está no `PATH` — daí o caminho completo.
+
+### Ciclo 2 — arquivo de dados não se altera
+
+Insira mais duas clientes:
+
+```sh
+cql "
+INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16396a','661.428.060-00','IVONE','GLAUCIA VIANA DUTRA','ivone@bmail.com');
+INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b163bcc','190.523.300-00','LUCILIA','ROSA LIMA PEREIRA','lucilia@yahoo.com');"
+
+```
+
+O arquivo que já existe mudou?
+
+```sh
+cass sh -c "ls -l $DIR/nb-1-big-Data.db; grep -c --text IVONE $DIR/nb-1-big-Data.db"
+
+```
+
+```
+-rw-r--r-- 1 cassandra cassandra 338 Jul 25 18:15 .../nb-1-big-Data.db
+0
+```
+
+Mesmo tamanho, mesmo horário, e a Ivone não está nele. Agora um novo flush:
+
+```sh
+cass nodetool flush lab cliente
+
+```
+
+```sh
+cass sh -c "ls -1 $DIR/*-Data.db"
+
+```
+
+```
+.../nb-1-big-Data.db
+.../nb-2-big-Data.db
+```
+
+**SSTable é imutável.** Uma vez escrita, nunca é alterada — só criada ou removida. Todo flush produz uma nova.
+
+Isso tem uma consequência incômoda: a mesma partição pode ter pedaços em várias SSTables, e uma leitura precisaria, em princípio, procurar em todas. É para evitar isso que existe o `Filter.db`, o bloom filter: antes de tocar no disco, o Cassandra pergunta a ele se aquela chave *pode* estar naquela SSTable, e na maioria das vezes a resposta é um "não" que custa nada.
+
+Mas o número de arquivos não pode crescer para sempre.
+
+### Ciclo 3 — compactação
+
+Vamos atualizar o sobrenome da Marivalda para algo bem grande, de modo que fique fácil de achar no disco:
+
+```sh
+cql "
+UPDATE lab.cliente
+SET sobrenome = 'DE ALCÂNTARA FRANCISCO ANTÔNIO JOÃO CARLOS XAVIER DE PAULA MIGUEL RAFAEL JOAQUIM JOSÉ GONZAGA PASCOAL CIPRIANO SERAFIM DE BRAGANÇA E BOURBON KANAMARY'
+WHERE id_cliente = '2b162060';"
+
+```
+
+```sh
+cass nodetool flush lab cliente
+
+```
+
+```sh
+cass sh -c "ls -l $DIR/*-Data.db | awk '{print \$5, \$NF}'"
+
+```
+
+```
+338 .../nb-1-big-Data.db
+171 .../nb-2-big-Data.db
+193 .../nb-3-big-Data.db
+```
+
+Três arquivos. E agora existem **duas versões do sobrenome da Marivalda no disco**: o `KANAMARY` original no `nb-1` e o nome comprido no `nb-3`.
+
+```sh
+cass sh -c "grep --text -o 'BOURBON KANAMARY' $DIR/nb-3-big-Data.db"
+
+```
+
+```
+BOURBON KANAMARY
+```
+
+A leitura resolve isso comparando timestamps e devolvendo o valor mais recente — o que funciona, mas custa. Cedo ou tarde é preciso consolidar. Normalmente o Cassandra faz isso sozinho, por conta da `SizeTieredCompactionStrategy` que apareceu no `DESCRIBE TABLE`; aqui vamos forçar:
+
+```sh
+cass nodetool compact lab cliente
+
+```
+
+```sh
+cass sh -c "ls -l $DIR/*-Data.db | awk '{print \$5, \$NF}'"
+
+```
+
+```
+632 .../nb-4-big-Data.db
+```
+
+Três arquivos viraram um. Isso é **compactação**, e o conceito por trás dela é a [Log-structured merge-tree](https://en.wikipedia.org/wiki/Log-structured_merge-tree), a **LSM tree**: escreve-se sempre em arquivo novo, e a consolidação acontece depois, em segundo plano.
+
+> Se a numeração do seu ambiente for diferente de `nb-1` a `nb-4`, é porque houve algum flush a mais. Use os nomes que o `ls` mostrar.
+
+Veja o que sobrou da Marivalda:
+
+```sh
+cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-4-big-Data.db"
+
+```
+
+```json
+      "key" : [ "2b162060" ],
+      "position" : 440
+    },
+    "rows" : [
+      {
+        "type" : "row",
+        "liveness_info" : { "tstamp" : "2026-07-25T18:15:17.198812Z" },
+        "cells" : [
+          { "name" : "cpf", "value" : "987.539.360-60" },
+          { "name" : "email", "value" : "marivalda@bmail.com" },
+          { "name" : "nome", "value" : "MARIVALDA" },
+          { "name" : "sobrenome", "value" : "DE ALCÂNTARA [...] BOURBON KANAMARY", "tstamp" : "2026-07-25T18:21:51.103215Z" }
+        ]
+      }
+    ]
+```
+
+Uma única célula `sobrenome`, com o valor novo. E repare no detalhe: ela tem **timestamp próprio**, `18:21:51`, diferente do `liveness_info` da linha, `18:15:17`. O timestamp no Cassandra é por célula, não por linha — o que explica como a compactação resolveu o conflito sem precisar de nada além dos próprios arquivos: para cada célula, vence a escrita mais recente.
+
+### O tombstone que sobreviveu
+
+```sh
+cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-4-big-Data.db" | grep -B3 deletion_info
+
+```
+
+```json
+      "key" : [ "NAO-EXISTE" ],
+      "deletion_info" : { "marked_deleted" : "2026-07-25T18:15:18.538026Z", ... }
+      "key" : [ "2b16256a" ],
+      "deletion_info" : { "marked_deleted" : "2026-07-25T18:15:18.963617Z", ... }
+```
+
+A compactação descartou o sobrenome antigo da Marivalda, mas **manteve os dois tombstones**. Por quê?
+
+```sh
+cql "SELECT gc_grace_seconds FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
+
+```
+
+```
+ gc_grace_seconds
+------------------
+           864000
+```
+
+864.000 segundos são **dez dias** — a terceira opção que separamos no `DESCRIBE TABLE` da seção 4. Antes desse prazo, nenhuma compactação remove um tombstone.
+
+A razão está num cluster, não aqui. Imagine três réplicas e uma delas fora do ar no momento do `DELETE`. Quando ela voltar, ainda terá a Gracimar. Se as outras duas já tivessem descartado o tombstone, a réplica atrasada espalharia a linha de volta — o registro apagado ressuscitaria. O tombstone precisa sobreviver o tempo suficiente para que o `nodetool repair` o propague a todas as réplicas.
+
+O preço de um tombstone é ocupar espaço e ser lido junto com o dado vivo. Uma tabela que apaga muito acumula tombstones, e leituras que atravessam milhares deles ficam lentas — é um dos problemas de desempenho mais comuns em Cassandra, e vem de decisões de modelagem, não de configuração.
+
+### O que você deve conseguir explicar
+
+- Por que a escrita é rápida, e por que não fica mais lenta com o volume.
+- Por que o dado aparece na consulta antes de existir arquivo de dados, e o que garante que ele não se perca.
+- O que significa cada **S** de SSTable, e por que arquivos imutáveis exigem compactação.
+- Por que `DELETE` é uma escrita, e o que `gc_grace_seconds` protege.
+- Por que dado sensível em Cassandra não está protegido por padrão.
+
+**→ Parte II.** A tabela `lab.cliente` responde bem a uma pergunta: "quem é o cliente de id X?". Na próxima seção vamos fazer a pergunta que todo sistema faz em seguida — e descobrir que ela não tem resposta nesta tabela, nem em nenhuma outra que se pareça com ela.
 
 ## 7. Não existe JOIN — existe outra tabela
 
