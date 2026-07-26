@@ -4,8 +4,6 @@ Author: Prof. Barbosa<br>
 Contact: infobarbosa@gmail.com<br>
 Github: [infobarbosa](https://github.com/infobarbosa)
 
-> **Esta branch reformula o laboratório.** O que mudou e por quê está no [plano de revisão](#plano-de-revisão), ao final.
-
 [Cassandra](https://cassandra.apache.org/) é um banco de dados distribuído com modelo de armazenamento **wide-column**. Neste laboratório você vai construir uma tabela do zero, acompanhar o dado descer até o disco, descobrir o limite de consulta que o Cassandra impõe — e então ver como um sistema real resolve esse limite.
 
 O laboratório inteiro cabe neste arquivo. Os comandos são copy-paste em terminal Linux, na ordem em que aparecem.
@@ -101,7 +99,6 @@ A diferença entre os dois últimos importa: o Cassandra recusa consultas mal mo
 - [A. Busca vetorial](#a-busca-vetorial)
 - [B. Encerrando o ambiente](#b-encerrando-o-ambiente)
 - [C. Troubleshooting](#c-troubleshooting)
-- [D. Nota para o instrutor](#d-nota-para-o-instrutor)
 
 ---
 
@@ -2653,65 +2650,3 @@ Leva pouco mais de um minuto e não deixa resíduo. Não hesite: nada neste labo
 ### O tamanho da tabela em disco não diminui depois do `DELETE`
 
 Não é problema — é a seção 6. Veja `gc_grace_seconds`.
-
-## D. Nota para o instrutor
-
-**Dosagem.** As seções 1 a 6 cabem em uma aula de 90 minutos e formam um bloco fechado: o aluno sai sabendo criar keyspace e tabela, e sabendo o que acontece com o dado no disco. As seções 7 a 10 pedem outra aula. A Parte IV é trabalho de casa.
-
-**Onde a turma trava.** No material anterior, o ponto de ruptura era a troca de contexto: entrar no container na seção 2, sair na 6, voltar na 7. Isso deixou de existir — tudo roda do host via `alias`. O novo ponto de atenção é mais brando: alunos que abrem um segundo terminal perdem os `alias` e a variável `$DIR`. Está no troubleshooting.
-
-**Bucketing é objetivo explícito.** A coluna `competencia` nas tabelas de lançamentos e de pedidos existe para ensinar bucketing, e a seção 8.4 a trata como técnica nomeada: o problema que resolve, medido em uma tabela sem bucket que o aluno constrói com 200 mil linhas; o preço, com `IN` na partition key e a ausência de intervalo; e a aritmética para escolher o período. Se o tempo apertar em sala, a parte que não pode ser cortada é a do preço — a patologia da partição gigante é fácil de aceitar por argumento, mas a conta que o bucket cobra na consulta só convence quando se vê o erro.
-
-**Dados relativos à data.** Os lançamentos do `infobarbank` e os pedidos do `ecommerce` são gerados em função de quando o ambiente foi criado, então as competências mudam a cada turma. Por isso o laboratório sempre **descobre** as competências em vez de fixá-las, e por isso o enunciado do trabalho não deve nomear meses. Vale conferir na véspera qual é a penúltima competência e usá-la nos exemplos em sala.
-
-**A competência mais recente é parcial.** O gerador do `infobarbank` distribui lançamentos nos últimos 365 dias, o que inclui o mês corrente. Na seção 8 isso é apresentado como característica de base de produção, não como defeito — e é bom que apareça, porque é o tipo de detalhe que derruba relatório em produção.
-
-**Cobertura de dados no `infobarbank`.** Sete das cinquenta clientes têm conta corrente, e quatro têm cartão. Se for escolher outra cliente para demonstrar em sala, use uma da lista da seção 10. As demais existem em `cliente` e nas tabelas de acesso alternativo, mas não têm movimento.
-
-**CPFs repetidos no `infobarbank`.** Dez CPFs são compartilhados por trinta clientes — resultado de como a lista de personas foi montada. Consultar `cliente_por_cpf` por um desses CPFs devolve várias pessoas. O CPF da Marivalda é único, e é o usado nos exemplos. No `ecommerce` os CPFs foram desduplicados.
-
-**O que este laboratório deliberadamente não faz.** Cluster. Tokens aparecem na seção 5 e replicação na seção 3, mas nada de derrubar nós, `nodetool repair` ou consistency level sob falha — isso exige réplicas de verdade e tem laboratório próprio. Demonstrar `QUORUM` falhando com `RF=3` em um nó é uma configuração que ninguém usa, e abre uma pergunta que este laboratório não responde.
-
-**Trabalho final.** O enunciado da Parte IV avalia a **justificativa**, não o resultado. Numa base de doze mil pedidos, várias tabelas devolvem a mesma resposta; só uma responde com leitura pontual. Se a turma entregar apenas CQL que funciona, a nota não distingue nada.
-
-Duas observações sobre o gabarito:
-
-- O repositório [cassandra-gerador-esquema-ecommerce](https://github.com/infobarbosa/cassandra-gerador-esquema-ecommerce) documenta, no `README.md`, a correspondência entre as tabelas da loja e as do banco. Isso é útil para você e é um spoiler parcial para o aluno — parcial porque o que se avalia é a escolha da tabela para cada consulta, e essa lista não a entrega pronta. Se preferir, o arquivo pode ser enxugado.
-- As duas perguntas de discussão no fim do enunciado não têm resposta no modelo: a primeira exige uma tabela que não existe (`valor_total` como clustering key), a segunda descreve o anti-pattern de partição gigante. São para debate, não para código.
-
-**Aprofundamento.** Para modelagem em escala real — 18,5 milhões de registros, partições de 224 MB, `ReadTimeout` por partição grande demais — o laboratório seguinte é o [cassandra-datamodeling-lab](https://github.com/infobarbosa/cassandra-datamodeling-lab).
-
----
-
-## Plano de revisão
-
-Esta branch reformula o laboratório, que antes estava dividido em sete subdiretórios, em um arquivo único e com um fio condutor só. O que mudou de fato:
-
-| | |
-|---|---|
-| **Um único jeito de digitar** | Antes, o aluno entrava no container na seção 2, saía na 6 e voltava na 7. Agora tudo roda do host, via `alias`. |
-| **Um único enredo** | Antes eram quatro keyspaces sem relação declarada (`ks001`, `infobarbank`, `ecommerce`, `infobarbank5`). Agora são três, com papéis explícitos. |
-| **Cluster sai** | Tokens, réplicas e disponibilidade ganham repositório próprio. O que dava para manter em um nó — fator de replicação e consistency level — ficou. |
-| **Cassandra 5 entra** | O laboratório se chamava `cassandra5` e não usava nenhum recurso da versão 5. Entram SAI, UCS e busca vetorial. |
-| **Modelagem é o centro** | O modelo do `infobarbank` deixa de ser cenário e passa a ser o objeto: cada uma das doze tabelas é lida a partir da consulta que a motivou. |
-
-Todas as fases concluídas. O laboratório foi executado de ponta a ponta em ambiente criado do zero, na ordem do texto, e os outputs colados vêm dessa passada.
-
-### Pendências da revisão
-
-- Fator de replicação aparece apenas como parâmetro de `CREATE KEYSPACE`. Alterar RF, `nodetool repair` e o comportamento de cada consistency level sob falha vão inteiros para o laboratório de cluster — demonstrar isso com um nó exigiria encenar uma configuração que ninguém usa.
-
-### Mapa do que saiu
-
-| Antes | Agora |
-|---|---|
-| `01-Cassandra-Start/` | seção 1 |
-| `02-cqlsh/` | seção 2 |
-| `03-Keyspaces/` | seção 3 |
-| `04-Tables/` | seções 4 e 5 |
-| `05-Datafiles/` | seção 6 |
-| `06-Cluster/` | repositório próprio, a ser criado |
-| `07-Cassandra-Driver/` | seção 10 |
-| `ecommerce-samples.md` | seção 11 |
-| `assets/scripts/standalone/compose.yaml` | `compose.yaml`, na raiz |
-| `assets/scripts/cluster/*.yaml` | repositório de cluster |
