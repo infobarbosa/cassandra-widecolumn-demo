@@ -17,6 +17,7 @@ O laboratório inteiro cabe neste arquivo. Os comandos são copy-paste em termin
 - Criar keyspaces e declarar a estratégia de replicação adequada à topologia.
 - Escrever `CREATE TABLE` cujo `PRIMARY KEY` responde a uma consulta específica, e explicar a diferença entre **partition key** e **clustering key**.
 - Prever em qual partição uma linha vai cair, e por que a ordem física dos dados no disco é uma decisão de modelagem.
+- Aplicar **bucketing** para impedir que uma partição cresça sem limite, e escolher a granularidade do bucket.
 - Acompanhar o caminho de escrita — commit log, memtable, SSTable, compactação, tombstone — observando os arquivos que o Cassandra cria.
 - Ler um modelo físico de verdade e dizer **qual consulta motivou cada tabela**.
 - Reconhecer os erros que o Cassandra devolve e saber, para cada um, se a resposta é corrigir a consulta ou modelar outra tabela.
@@ -39,7 +40,7 @@ Recomendo Linux. Caso não tenha um à disposição, use o **AWS Cloud9** — as
 | Parte | Assunto | Keyspace | Tempo |
 |---|---|---|---|
 | **I** | Fundamentos: do ambiente ao dado no disco | `lab`, criada por você | ~100 min |
-| **II** | Modelagem: de sete consultas a doze tabelas | `infobarbank` | ~60 min |
+| **II** | Modelagem: de sete consultas a doze tabelas | `infobarbank` | ~75 min |
 | **III** | A aplicação: o mesmo fluxo em Python | `infobarbank` | ~30 min |
 | **IV** | Trabalho final | `ecommerce` | — |
 
@@ -684,6 +685,8 @@ Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, ca
 ### Partição e linha não são a mesma coisa
 
 Em `lab.cliente`, cada partição tem exatamente uma linha, porque a `PRIMARY KEY` tem só a partition key. É o caso mais simples que existe, e também o menos interessante: uma partição de uma linha só não aproveita nada do que o Cassandra sabe fazer.
+
+O outro extremo — uma partição que cresce sem limite — é um problema de verdade, e existe uma técnica para controlá-lo. Ela tem seção própria: 8.4.
 
 O que muda quando a `PRIMARY KEY` tem mais colunas é o centro da Parte II. Por ora, guarde a distinção:
 
@@ -1414,11 +1417,272 @@ Duas coisas nesse resultado.
 
 **O filtro de datas funciona** sem `ALLOW FILTERING`, ao contrário do `WHERE nome=...` da seção 4. Porque `data_hora` é clustering key: dentro da partição as linhas estão ordenadas por ela, então buscar um intervalo é ir a duas posições e ler o que está entre elas.
 
-Por que `competencia` entrou na partition key? Se a partição fosse só `id_cliente`, todos os lançamentos de uma cliente ao longo de anos ficariam em uma única partição, que cresceria para sempre. Uma partição não se divide entre nós — o cluster escala em **número** de partições, não em tamanho delas. Colocar a competência na chave quebra o histórico em uma partição por mês, cada uma com algumas dezenas de linhas.
+Falta explicar a decisão mais importante dessa chave: **por que `competencia` está ali**. Ela não identifica o lançamento, não é pedida pela regra de negócio e obriga toda consulta a informar um mês. É uma coluna que existe por um motivo de engenharia — e esse motivo tem nome. É a próxima seção.
 
-O preço é que **toda consulta precisa informar a competência**. É por isso que a tela de extrato do seu banco tem um seletor de mês, e não um campo livre de datas. A interface do aplicativo é consequência do modelo de dados.
+### 8.4 Bucketing: quebrando a partição que não para de crescer
 
-### 8.4 A mesma partição, quatro ordenações
+Imagine a chave sem a competência: `PRIMARY KEY ((id_cliente), data_hora, id_lancamento)`. Fica mais simples, e a consulta por período fica melhor — um intervalo de datas qualquer, sem precisar saber de mês nenhum.
+
+O problema é que a partição de cada cliente passa a **crescer para sempre**. Uma partição não se divide entre nós: o cluster escala em **número** de partições, não em tamanho delas. Dez anos de extrato de um cliente ativo viram uma única partição, num único nó.
+
+Acrescentar a competência à partition key quebra esse histórico em uma partição por mês. A técnica tem nome: **bucketing**. Consiste em incluir na partition key uma coluna cuja única função é **limitar quantas linhas caem em cada partição** — quase sempre derivada do tempo.
+
+#### O tamanho do problema, medido
+
+Vamos construir a versão sem bucket e comparar. Primeiro a tabela:
+
+```sh
+cql "
+CREATE TABLE lab.lancamento_sem_bucket (
+    id_cliente      text,
+    data_hora       timestamp,
+    id_lancamento   text,
+    estabelecimento text,
+    valor           float,
+    PRIMARY KEY ((id_cliente), data_hora, id_lancamento)
+) WITH CLUSTERING ORDER BY (data_hora DESC, id_lancamento ASC);"
+
+```
+
+Agora 200 mil lançamentos de **uma só cliente**, distribuídos em dez anos — o que um correntista ativo acumula em uma década:
+
+```sh
+LC_ALL=C awk 'BEGIN{
+  srand(42);
+  split("Supermercado,Restaurante,Farmácia,Padaria,Posto de gasolina", est, ",");
+  print "id_cliente,data_hora,id_lancamento,estabelecimento,valor";
+  for (i = 0; i < 200000; i++)
+    printf "2b162060,%d,%08x,%s,%.2f\n", 1451606400000 + i * 1576800, i, est[int(rand()*5)+1], 10 + rand()*990;
+}' > lancamentos.csv
+
+```
+
+```sh
+docker cp lancamentos.csv cassandra-database:/tmp/
+
+```
+
+```sh
+cql "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, estabelecimento, valor) FROM '/tmp/lancamentos.csv' WITH HEADER=TRUE;"
+
+```
+
+```
+200000 rows imported from 1 files in 0 day, 0 hour, 0 minute, and 2.103 seconds (0 skipped).
+```
+
+> Duas coisas sobre esse `awk`. A coluna `data_hora` é gerada como **epoch em milissegundos** (`1451606400000` é 1º de janeiro de 2016), formato que o `COPY` aceita para colunas `timestamp` — assim não dependemos de nenhuma extensão de `awk` para formatar datas. E o `LC_ALL=C` não é enfeite: em locale brasileiro, `%.2f` imprime `395,46` com vírgula, o que quebraria o CSV em uma coluna a mais.
+
+Force a descida para o disco e compare as duas tabelas:
+
+```sh
+cass nodetool flush lab lancamento_sem_bucket
+
+```
+
+```sh
+cass nodetool tablestats lab.lancamento_sem_bucket
+
+```
+
+```
+  Number of partitions (estimate): 1
+  Compacted partition maximum bytes: 10090808
+  Compacted partition mean bytes: 10090808
+```
+
+```sh
+cass nodetool tablestats infobarbank.lancamentos_por_periodo
+
+```
+
+```
+  Number of partitions (estimate): 91
+  Compacted partition maximum bytes: 2759
+  Compacted partition mean bytes: 934
+```
+
+| | partições | maior partição |
+|---|---|---|
+| sem bucket | 1 | 10.090.808 bytes |
+| com bucket | 91 | 2.759 bytes |
+
+Uma partição de **10 MB**, contra 2,7 KB. E isso com 200 mil linhas de **uma** cliente.
+
+#### Onde o problema realmente aparece
+
+Aqui está a parte que costuma surpreender. Uma leitura pontual dentro da partição gigante continua rápida:
+
+```sh
+cql "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-06-01' AND data_hora < '2020-06-08';"
+
+```
+
+```
+   384
+```
+
+Responde em meio segundo. O índice da partição mais as clustering keys levam direto ao trecho pedido, e o tamanho da partição quase não pesa. Já atravessar a partição inteira custa:
+
+```sh
+cql "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060';"
+
+```
+
+```
+ 200000
+```
+
+Três vezes mais lento — e com 200 mil linhas isso ainda é tolerável. Agora que houve leituras, o `tablehistograms` mostra a distribuição das duas tabelas lado a lado:
+
+```sh
+cass nodetool tablehistograms lab lancamento_sem_bucket
+
+```
+
+```
+Percentile      Read Latency     Write Latency          SSTables    Partition Size        Cell Count
+                    (micros)          (micros)                             (bytes)
+50%                   215.00             35.00              1.00          10090808            454826
+99%                   372.00           1916.00              1.00          10090808            454826
+```
+
+```sh
+cass nodetool tablehistograms infobarbank lancamentos_por_periodo
+
+```
+
+```
+50%                     0.00              0.00              0.00               770                50
+99%                     0.00              0.00              0.00              2759               179
+```
+
+454 mil células numa partição contra 179, e uma partição que precisa de uma SSTable inteira para ser lida contra uma que o Cassandra resolve tão rápido que a latência fica abaixo da resolução do instrumento. O problema da partição gigante não está na leitura pontual; está em tudo que precisa **atravessá-la ou movê-la**:
+
+- **Hotspot.** A partição inteira mora nas mesmas réplicas. Um cliente muito ativo concentra carga em poucos nós, e nenhum rebalanceamento resolve, porque partição não se divide.
+- **Compactação e repair.** As duas operam sobre partições inteiras. Uma partição de gigabytes pressiona heap e GC em cada ciclo.
+- **Leitura completa.** Em escala, ela deixa de ser lenta e passa a estourar o `read_request_timeout` — o servidor desiste antes de terminar.
+
+A regra prática é manter partições **abaixo de ~100 MB**. Nossa partição de 10 MB está confortável; o que interessa é a trajetória: dez anos deram 10 MB para 200 mil linhas, então um cliente com dez vezes mais movimento encosta no teto, e um cliente corporativo o estoura.
+
+#### O preço do bucketing
+
+O bucket não é grátis, e o custo é na consulta. Com a competência na partition key, **não existe intervalo** na coluna de bucket:
+
+> **Provoque este erro.**
+
+```sh
+cql "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia >= '2026-04';"
+
+```
+
+```
+InvalidRequest: ... "Cannot execute this query as it might involve data filtering..."
+```
+
+Faz sentido, pelo que você viu na seção 5: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre abril e junho". A saída é listar os buckets desejados:
+
+```sh
+cql "
+SELECT competencia, count(*)
+FROM infobarbank.lancamentos_por_periodo
+WHERE id_cliente='2b162060' AND competencia IN ('2026-04','2026-05','2026-06')
+GROUP BY competencia;"
+
+```
+
+```
+ competencia | count
+-------------+-------
+     2026-04 |    25
+     2026-05 |    22
+     2026-06 |    18
+```
+
+E para um período que atravessa buckets, combina-se `IN` no bucket com o intervalo na clustering key:
+
+```sh
+cql "
+SELECT competencia, count(*)
+FROM infobarbank.lancamentos_por_periodo
+WHERE id_cliente='2b162060' AND competencia IN ('2026-05','2026-06')
+  AND data_hora >= '2026-05-20' AND data_hora < '2026-06-10'
+GROUP BY competencia;"
+
+```
+
+```
+ competencia | count
+-------------+-------
+     2026-05 |     4
+     2026-06 |     4
+```
+
+Compare com a tabela sem bucket, onde o mesmo período é um intervalo só, sem que a aplicação precise saber de meses:
+
+```sh
+cql "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-05-20' AND data_hora < '2020-06-10';"
+
+```
+
+```
+   1150
+```
+
+**É essa a troca.** O bucket protege o tamanho da partição e cobra dois preços: a aplicação passa a ter de **calcular quais buckets** cobrem o período pedido, e `IN` numa partition key são **N leituras**, possivelmente em N nós, com o coordenador esperando pela mais lenta. Serve para N pequeno. Não serve para "os últimos dois anos" — isso são 24 partições, e a consulta certa aí é outra tabela, com outro bucket.
+
+É também por isso que a tela de extrato do seu banco tem um **seletor de mês** em vez de um campo livre de datas. A interface do aplicativo é consequência do modelo de dados.
+
+#### Escolhendo o tamanho do bucket
+
+A conta é direta:
+
+```
+linhas por partição  ≈  taxa de escrita  ×  período do bucket
+```
+
+Com o teto de ~100 MB, e mirando algo entre dez mil e cem mil linhas por partição:
+
+| Caso | Taxa de escrita | Bucket | Linhas por partição | |
+|---|---|---|---|---|
+| extrato bancário | ~20 por mês | mês | ~20 | ✓ |
+| pedidos de e-commerce | ~20 por mês | mês | ~20 | ✓ |
+| sensor IoT | 1 por segundo | mês | 2,6 milhões | ✗ |
+| sensor IoT | 1 por segundo | dia | 86.400 | ✓ |
+| ticks de mercado | 1.000 por segundo | hora | 3,6 milhões | ✗ |
+| ticks de mercado | 1.000 por segundo | minuto | 60.000 | ✓ |
+
+Erra-se para os **dois** lados. Bucket grande demais devolve o problema da partição gigante. Bucket pequeno demais gera partições demais, e toda consulta de período precisa de um `IN` com muitos valores — trocando um problema de tamanho por um de quantidade de leituras.
+
+E note o que a primeira linha da tabela revela sobre o nosso próprio modelo: com ~20 lançamentos por mês, um bucket **anual** daria 240 linhas por partição, ainda minúsculo. Pelo critério de tamanho, o bucket mensal do `infobarbank` é mais fino do que precisaria ser. Ele foi escolhido para casar com a **consulta** — a tela mostra um mês. Granularidade de bucket se decide pelas duas coisas: o limite de tamanho e o padrão de acesso.
+
+#### Bucket sem tempo
+
+Quando não há dimensão temporal natural, usa-se um bucket **sintético**: `bucket = hash(alguma_coisa) % N`, gravado como coluna e incluído na partition key. Um catálogo com uma categoria de milhões de itens pode virar `((categoria, bucket), item)` com `N = 100`.
+
+O custo muda de forma: como o bucket não tem significado, a leitura precisa consultar **todos os N** e juntar os resultados na aplicação. Isso faz de `N` uma decisão de modelagem — grande o bastante para dividir a partição, pequeno o bastante para a leitura não virar N consultas caras.
+
+#### Onde mais o bucketing aparece neste laboratório
+
+Agora que a técnica tem nome, ela fica visível em todo o material:
+
+| Tabela | Partition key | Bucket |
+|---|---|---|
+| `infobarbank.lancamentos_por_periodo` e as três irmãs | `(id_cliente, competencia)` | mês |
+| `ecommerce.pedidos_por_periodo` e as três irmãs | `(id_cliente, competencia)` | mês |
+| `ecommerce.pedidos_por_uf` | `(uf, data_pedido)` | dia |
+| `ecommerce.pedidos_por_produto` | `(produto, data_pedido)` | dia |
+
+Nas duas últimas, a primeira coluna já limita bastante (27 UFs, 11 produtos), e é o bucket diário que impede a partição de crescer indefinidamente com o tempo.
+
+Terminada a comparação, libere os 10 MB:
+
+```sh
+cql "DROP TABLE lab.lancamento_sem_bucket;"
+
+```
+
+### 8.5 A mesma partição, quatro ordenações
 
 Q3, Q5 e Q6 pedem os mesmos lançamentos da mesma cliente no mesmo mês. Só a forma de filtrar muda. Compare as chaves:
 
@@ -1496,7 +1760,7 @@ LIMIT 4;"
 
 `tipo_operacao` é a **direção contábil** do lançamento: `DEBITO` é saída de dinheiro, `CREDITO` é entrada — salário caindo na conta, estorno no cartão. Num extrato, entradas são naturalmente raras, então uma consulta filtrando `CREDITO` pode devolver poucas linhas ou nenhuma. Não é erro seu.
 
-### 8.5 Os erros que ensinam
+### 8.6 Os erros que ensinam
 
 Quatro tentativas que o Cassandra recusa. Cada mensagem diz algo diferente sobre a chave primária.
 
@@ -1566,9 +1830,9 @@ InvalidRequest: ... "Order by is currently only supported on the clustered colum
 of the PRIMARY KEY, got valor"
 ```
 
-O Cassandra não ordena em tempo de consulta: ele **entrega** na ordem em que gravou. Querer os lançamentos por valor não é uma consulta diferente — é uma **tabela** diferente, com `valor` como clustering key. Foi exatamente esse raciocínio que produziu as quatro tabelas de 8.4.
+O Cassandra não ordena em tempo de consulta: ele **entrega** na ordem em que gravou. Querer os lançamentos por valor não é uma consulta diferente — é uma **tabela** diferente, com `valor` como clustering key. Foi exatamente esse raciocínio que produziu as quatro tabelas de 8.5.
 
-### 8.6 O que o `ALLOW FILTERING` faz
+### 8.7 O que o `ALLOW FILTERING` faz
 
 O erro sugere `ALLOW FILTERING` desde a seção 4. Vamos ver o que ele custa, com o `TRACING` ligado.
 
@@ -1612,6 +1876,7 @@ O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas r
 - A diferença entre partition key composta e múltiplas clustering keys — inclusive quais colunas cada uma exige na consulta.
 - Por que `ORDER BY` só funciona em clustering key.
 - Por que a tela de extrato do seu banco tem um seletor de mês.
+- O que é bucketing, o que ele protege, o que ele cobra, e como escolher o período do bucket.
 - Dado um `PRIMARY KEY`, qual consulta ele responde. E dada uma consulta, qual `PRIMARY KEY` ela pede.
 
 **→ Próxima seção.** Você viu a resposta clássica do Cassandra para "não posso filtrar por essa coluna": modele outra tabela. A versão 5 trouxe uma terceira via — e o mais instrutivo dela é entender por que ela não substitui a modelagem.
@@ -1708,7 +1973,7 @@ Index query accessed memtable indexes, 1 SSTable index, and 1 segment,
 post-filtered 1 row in 1 partition, and took 1074 microseconds.
 ```
 
-A boa notícia está no fim: **1 linha lida, 1 partição** — nada de varredura sequencial como no `ALLOW FILTERING` da seção 8.6.
+A boa notícia está no fim: **1 linha lida, 1 partição** — nada de varredura sequencial como no `ALLOW FILTERING` da seção 8.7.
 
 A notícia importante está no meio: **`Submitting range requests on 17 ranges`**. O índice SAI é **local a cada nó**: ele sabe onde está o dado *dentro* do nó, mas não sabe em qual nó procurar. Então o coordenador pergunta a todos.
 
@@ -1972,7 +2237,7 @@ cassandra.InvalidRequest: Error from server: code=2200 [Invalid query]
 message="Cannot execute this query as it might involve data filtering..."
 ```
 
-É o primeiro erro de 8.5 — partition key composta pela metade — agora como exceção Python. **O driver não protege de modelagem errada**, e não existe camada de abstração que resolva isso: as regras da seção 8 valem em qualquer linguagem.
+É o primeiro erro de 8.6 — partition key composta pela metade — agora como exceção Python. **O driver não protege de modelagem errada**, e não existe camada de abstração que resolva isso: as regras da seção 8 valem em qualquer linguagem.
 
 O `SELECT DISTINCT` sobre as colunas da partition key é válido porque percorre o índice de partições, não os dados. Mas continua sendo conveniência de laboratório: percorrer todas as partições não escala. Um aplicativo de banco não descobre a competência — ele a recebe do seletor de mês da tela.
 
@@ -2008,7 +2273,7 @@ Onze páginas para mil linhas em páginas de cem — a última vem vazia. O Cass
 
 O `fetch_size` padrão do driver é 5000. O que ele protege é a memória do **cliente** e o tempo de resposta do **coordenador**: sem paginação, uma consulta ampla obrigaria o nó a montar o resultado inteiro antes de enviar qualquer coisa.
 
-Isso não torna consulta ampla aceitável. Paginar uma varredura continua sendo uma varredura — a seção 8.6 vale igual. Paginação existe para o caso em que **uma partição legítima** tem muitas linhas.
+Isso não torna consulta ampla aceitável. Paginar uma varredura continua sendo uma varredura — a seção 8.7 vale igual. Paginação existe para o caso em que **uma partição legítima** tem muitas linhas.
 
 ### Assíncrono
 
@@ -2143,7 +2408,7 @@ O item 3 é o que está sendo avaliado. Duas tabelas diferentes podem devolver o
 Não precisam de código.
 
 1. A loja quer uma tela com **os dez pedidos de maior valor** de uma cliente numa competência. Nenhuma das onze tabelas responde a isso com eficiência. Por quê, e o que precisaria existir?
-2. `pedidos_por_uf` particiona por `(uf, data_pedido)`. O que aconteceria com essa tabela se a partition key fosse apenas `uf`?
+2. `pedidos_por_uf` particiona por `(uf, data_pedido)`, ou seja, usa bucketing diário. O que aconteceria com essa tabela se a partition key fosse apenas `uf`? E o que se perde ao consultar, por ter o bucket ali?
 
 ## A. Busca vetorial
 
@@ -2394,6 +2659,8 @@ Não é problema — é a seção 6. Veja `gc_grace_seconds`.
 **Dosagem.** As seções 1 a 6 cabem em uma aula de 90 minutos e formam um bloco fechado: o aluno sai sabendo criar keyspace e tabela, e sabendo o que acontece com o dado no disco. As seções 7 a 10 pedem outra aula. A Parte IV é trabalho de casa.
 
 **Onde a turma trava.** No material anterior, o ponto de ruptura era a troca de contexto: entrar no container na seção 2, sair na 6, voltar na 7. Isso deixou de existir — tudo roda do host via `alias`. O novo ponto de atenção é mais brando: alunos que abrem um segundo terminal perdem os `alias` e a variável `$DIR`. Está no troubleshooting.
+
+**Bucketing é objetivo explícito.** A coluna `competencia` nas tabelas de lançamentos e de pedidos existe para ensinar bucketing, e a seção 8.4 a trata como técnica nomeada: o problema que resolve, medido em uma tabela sem bucket que o aluno constrói com 200 mil linhas; o preço, com `IN` na partition key e a ausência de intervalo; e a aritmética para escolher o período. Se o tempo apertar em sala, a parte que não pode ser cortada é a do preço — a patologia da partição gigante é fácil de aceitar por argumento, mas a conta que o bucket cobra na consulta só convence quando se vê o erro.
 
 **Dados relativos à data.** Os lançamentos do `infobarbank` e os pedidos do `ecommerce` são gerados em função de quando o ambiente foi criado, então as competências mudam a cada turma. Por isso o laboratório sempre **descobre** as competências em vez de fixá-las, e por isso o enunciado do trabalho não deve nomear meses. Vale conferir na véspera qual é a penúltima competência e usá-la nos exemplos em sala.
 
