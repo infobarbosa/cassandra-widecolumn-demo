@@ -2410,6 +2410,8 @@ pip install cassandra-driver
 
 ```
 
+> O `venv` vale **só neste terminal**, como os `alias` da seção 1. Se você abrir outro terminal para rodar o `driver_demo.py`, precisa ativá-lo de novo — o `pip install` não se repete, a ativação sim. Quando ele está ativo, o prompt começa com `(venv)`.
+
 A conexão vai para `127.0.0.1:9042`, a porta que o `compose.yaml` publica no host:
 
 ```sh
@@ -2909,7 +2911,7 @@ alias cass='docker exec -it cassandra-database'
 
 ```
 
-O mesmo vale para a variável `$DIR` da seção 6.
+O mesmo vale para a variável `$DIR` da seção 6 e para o `venv` da seção 10 — tudo o que você define num terminal morre com ele.
 
 ### `Error response from daemon: No such container: cassandra-database`
 
@@ -2928,6 +2930,33 @@ O Cassandra ainda está subindo. Espere e repita. Para acompanhar:
 docker logs -f cassandra-database
 
 ```
+
+### `ModuleNotFoundError: No module named 'cassandra'`
+
+Duas causas, e vale testar nesta ordem porque a segunda é a que costuma enganar.
+
+**1. O `venv` não está ativo neste terminal.** É o caso mais comum: você instalou o driver, abriu outro terminal para rodar o script, e ali o `venv` não existe. Descubra qual Python está sendo usado:
+
+```sh
+which python3
+
+```
+
+Se a resposta **não** terminar em `venv/bin/python3`, é isso. Ative, no diretório onde você criou o `venv`:
+
+```sh
+. venv/bin/activate
+
+```
+
+**2. O driver não foi instalado.** Aí é o `pip install` da seção 10:
+
+```sh
+pip install cassandra-driver
+
+```
+
+> Se esse comando responder `Requirement already satisfied` e mesmo assim o erro continuar, **volte para a causa 1**: você instalou em um ambiente e está executando em outro. É a única combinação que produz esses dois sintomas juntos, e é onde as pessoas ficam presas reinstalando.
 
 ### `NoHostAvailable` ao conectar pelo driver
 
