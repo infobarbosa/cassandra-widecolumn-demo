@@ -44,7 +44,7 @@ services:
 
   # Caso de uso do trabalho final: espelho do infobarbank em outro domínio.
   cassandra-init-ecommerce:
-    image: ghcr.io/infobarbosa/cassandra-gerador-esquema-ecommerce:2.0
+    image: ghcr.io/infobarbosa/cassandra-gerador-esquema-ecommerce:3.0
     container_name: cassandra-init-ecommerce
     environment:
       - CASSANDRA_CONTACT_POINTS=cassandra-database

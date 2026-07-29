@@ -149,7 +149,7 @@ docker compose logs -f cassandra-init-ecommerce
 ```
 
 ```
-cassandra-init-ecommerce  | Carregadas 11959 linhas em pedidos_por_produto (3.3s).
+cassandra-init-ecommerce  | Carregadas 11959 linhas em pedido_detalhe (2.6s).
 cassandra-init-ecommerce  | Keyspace ecommerce pronta em 25.8s. Cliente-âncora: CLI-000001.
 ```
 
@@ -164,7 +164,7 @@ docker ps -a
 
 ```
 NAMES                        IMAGE                                        STATUS
-cassandra-init-ecommerce     ...cassandra-gerador-esquema-ecommerce:2.0   Exited (0) 4 minutes ago
+cassandra-init-ecommerce     ...cassandra-gerador-esquema-ecommerce:3.0   Exited (0) 4 minutes ago
 cassandra-init-infobarbank   ...cassandra-gerador-esquema-infobarbank:1.0 Exited (0) 4 minutes ago
 cassandra-database           cassandra:5.0.8                              Up 6 minutes (healthy)
 ```
@@ -181,7 +181,7 @@ curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/scri
 ```
 Keyspaces
   ✓ infobarbank: 12 tabelas (modelagem de dados)
-  ✓ ecommerce: 11 tabelas (trabalho final)
+  ✓ ecommerce: 9 tabelas (trabalho final)
   ! lab: ainda não criada — você a cria na Parte I
 
 Dados
@@ -2002,11 +2002,21 @@ Agora que a técnica tem nome, ela fica visível em todo o material:
 | Tabela | Partition key | Bucket |
 |---|---|---|
 | `infobarbank.lancamentos_por_periodo` e as três irmãs | `(id_cliente, competencia)` | mês |
-| `ecommerce.pedidos_por_periodo` e as três irmãs | `(id_cliente, competencia)` | mês |
-| `ecommerce.pedidos_por_uf` | `(uf, data_pedido)` | dia |
-| `ecommerce.pedidos_por_produto` | `(produto, data_pedido)` | dia |
+| `ecommerce.pedidos_por_periodo`, `_status` e `_forma_pagamento` | `(id_cliente, competencia)` | mês |
+| `ecommerce.pedidos_por_produto` | `(id_cliente, produto)` | **nenhum** |
 
-Nas duas últimas, a primeira coluna já limita bastante (27 UFs, 11 produtos), e é o bucket diário que impede a partição de crescer indefinidamente com o tempo.
+A última é a interessante, porque é a exceção. Ela não tem bucket, e isso é escolha, não esquecimento.
+
+O bucket resolve o tamanho da partição, mas cobra um preço na consulta: **quem lê precisa saber o período**. Isso é barato quando a tela mostra um mês — e é exatamente o que as outras fazem. Mas a pergunta que essa tabela responde é *"quantas vezes eu já comprei isto?"*, e o histórico de um produto é justamente a pergunta que **não** tem período em mãos. Com `competencia` na partição, seria uma leitura por mês.
+
+Sem bucket, quem limita o tamanho é a cardinalidade natural do par: um cliente não compra a mesma geladeira dez mil vezes. Confira:
+
+```sh
+cql "SELECT count(*) FROM ecommerce.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
+
+```
+
+Vinte e poucas linhas em doze competências — mesma ordem de grandeza das particionadas por mês. **Bucketing é uma troca, não uma regra:** só se paga o preço na consulta quando a partição cresceria sem limite.
 
 Terminada a comparação, libere os 10 MB:
 
@@ -2660,7 +2670,9 @@ deactivate
 
 Você acabou de percorrer o modelo de um banco digital, das sete perguntas do fluxo aplicacional até as doze tabelas que as respondem. Agora o exercício inverso: um modelo pronto, feito pelo mesmo método, e a sua tarefa é **reconstruir qual consulta motivou cada tabela** — em outra empresa, sem receber o mapa.
 
-A keyspace `ecommerce` é uma **loja virtual**, já carregada. Ela foi modelada com as mesmas convenções do `infobarbank`: nomes no padrão `entidade_por_critério`, partição por entidade mais janela de tempo, ordenação física por data decrescente, e uma tabela dedicada à leitura pontual pelo id.
+A keyspace `ecommerce` é uma **loja virtual**, já carregada. Ela foi modelada com as mesmas convenções do `infobarbank`: nomes no padrão `entidade_por_critério`, ordenação física por data decrescente, uma tabela dedicada à leitura pontual pelo id — e, acima de tudo, a regra que governa toda partition key deste laboratório: **ela é sempre algo que a tela tem em mãos**.
+
+Repare que a regra não diz "o cliente". Diz *o que a tela tem*. Às vezes é o cliente logado, às vezes é o CPF que o atendente anotou, às vezes é o id que veio da lista anterior. Quando você for justificar cada escolha, é essa a pergunta a fazer primeiro.
 
 A cliente é a mesma pessoa. No banco ela é `2b162060`; na loja, **`CLI-000001`** — mesmo nome, mesmo CPF, id próprio de cada sistema. É por isso que as duas empresas precisam de uma tabela de acesso por CPF.
 
@@ -2687,11 +2699,9 @@ cql "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecommerce'
  pedidos_por_forma_pagamento
          pedidos_por_periodo
          pedidos_por_produto
- pedidos_por_produto_cliente
           pedidos_por_status
-              pedidos_por_uf
 
-(11 rows)
+(9 rows)
 ```
 
 Descubra as competências disponíveis — aqui também os dados são relativos à data de execução:
@@ -2747,8 +2757,8 @@ Dito de outro modo: cada justificativa sua deve percorrer, ao contrário, o cami
 
 Não precisam de código.
 
-1. A loja quer uma tela com **os dez pedidos de maior valor** de uma cliente numa competência. Nenhuma das onze tabelas responde a isso com eficiência. Por quê, e o que precisaria existir?
-2. `pedidos_por_uf` particiona por `(uf, data_pedido)`, ou seja, usa bucketing diário. O que aconteceria com essa tabela se a partition key fosse apenas `uf`? E o que se perde ao consultar, por ter o bucket ali?
+1. A loja quer uma tela com **os dez pedidos de maior valor** de uma cliente numa competência. Nenhuma das nove tabelas responde a isso com eficiência. Por quê, e o que precisaria existir?
+2. `pedidos_por_produto` particiona por `(id_cliente, produto)` — é a única tabela de pedidos sem bucket. O que aconteceria com ela se a partition key fosse `(id_cliente, produto, competencia)`? Ganha-se o quê, e perde-se qual consulta?
 
 ## A. Busca vetorial
 
