@@ -92,7 +92,7 @@ verifica_keyspace() {
 }
 
 verifica_keyspace infobarbank 12 "modelagem de dados"
-verifica_keyspace ecommerce   11 "trabalho final"
+verifica_keyspace ecommerce    9 "trabalho final"
 
 LAB=$(valor "SELECT count(*) FROM system_schema.tables WHERE keyspace_name='lab';")
 if [ -n "$LAB" ] && [ "$LAB" != "0" ]; then
