@@ -1,56 +1,18 @@
 #
-# Ambiente do laboratório: um nó Cassandra e as duas keyspaces do curso.
+# Execução local do laboratório (Apêndice D do README): um container com o
+# code-server e um nó Cassandra, com as duas keyspaces do curso carregadas no
+# primeiro boot.
 #
 #   docker compose up -d
 #
-# A porta 9042 é publicada no host porque a Parte III do laboratório executa uma
-# aplicação Python fora do container.
+# Depois, abra http://localhost:8080 no navegador.
 #
-name: cassandra5-demo
+name: cassandra-widecolumn-demo
 services:
-  cassandra-database:
-    image: cassandra:5.0.8
-    container_name: cassandra-database
+  cassandra-lab:
+    container_name: cassandra-lab
+    image: ghcr.io/infobarbosa/cassandra-lab-docker-image:versao-inicial
     ports:
-      - "9042:9042"
-    environment:
-      - CASSANDRA_CLUSTER_NAME=infobarbosainc
-      - CASSANDRA_DC=datacenter1
-      - CASSANDRA_RACK=RAC1
-      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
-    restart:
-      on-failure
-    healthcheck:
-      # `nodetool status` responde antes do nó estar operacional; o grep por UN
-      # é o que garante que a carga das keyspaces não comece cedo demais.
-      test: ["CMD-SHELL", "nodetool status | grep '^UN' || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 30s
-
-  # Caso de uso das aulas de modelagem de dados.
-  cassandra-init-infobarbank:
-    image: ghcr.io/infobarbosa/cassandra-gerador-esquema-infobarbank:1.0
-    container_name: cassandra-init-infobarbank
-    environment:
-      - CASSANDRA_CONTACT_POINTS=cassandra-database
-      - CASSANDRA_REPLICATION_FACTOR=1
-    depends_on:
-      cassandra-database:
-        condition: service_healthy
-    restart:
-      on-failure
-
-  # Caso de uso do trabalho final: espelho do infobarbank em outro domínio.
-  cassandra-init-ecommerce:
-    image: ghcr.io/infobarbosa/cassandra-gerador-esquema-ecommerce:3.0
-    container_name: cassandra-init-ecommerce
-    environment:
-      - CASSANDRA_CONTACT_POINTS=cassandra-database
-      - CASSANDRA_REPLICATION_FACTOR=1
-    depends_on:
-      cassandra-database:
-        condition: service_healthy
-    restart:
-      on-failure
+      - "8080:8080"
+    # Tempo para o nodetool drain descarregar as memtables ao parar o container.
+    stop_grace_period: 60s

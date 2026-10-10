@@ -27,11 +27,10 @@ O laboratório inteiro cabe neste arquivo. Os comandos são copy-paste em termin
 
 ## Pré-requisitos
 
-- **Docker** com o plugin `compose` (v2). Nada mais precisa ser instalado: o `cqlsh` e o `nodetool` vêm dentro do container.
-- **Python 3** com `venv`, apenas para a Parte III.
-- Cerca de **2 GB de RAM** livres e **5 GB de disco**.
+- Acesso ao **AWS Academy** (o ambiente é uma instância EC2 criada por um script, na seção 1).
+- Um navegador. Nada precisa ser instalado: o `cqlsh`, o `nodetool`, as ferramentas de inspeção de arquivos e o driver Python já vêm no ambiente.
 
-Recomendo Linux. Caso não tenha um à disposição, use o **AWS Cloud9** — as instruções estão em [data-engineering-cloud9](https://github.com/infobarbosa/data-engineering-cloud9).
+Fora da aula, o mesmo ambiente roda em qualquer máquina com **Docker** e cerca de **2 GB de RAM** livres — veja o [Apêndice D](#d-execução-local).
 
 ---
 
@@ -50,11 +49,11 @@ São três keyspaces, com papéis distintos:
 - **`infobarbank`** — o sistema de um banco digital, já carregado. É o caso de uso da modelagem.
 - **`ecommerce`** — uma loja, também já carregada. É o **espelho** do banco: as mesmas convenções de modelagem em outro domínio. É sobre ela que o trabalho final é feito.
 
-Ao longo de todo o laboratório os comandos são executados a partir do host, nunca de dentro do container, usando dois atalhos definidos na primeira seção:
+Ao longo de todo o laboratório os comandos são executados no **terminal do code-server**, a IDE que roda no navegador junto com o Cassandra. As duas ferramentas que você mais vai usar são:
 
-```sh
-alias cql='docker exec -it cassandra-database cqlsh -e'
-alias nt='docker exec -it cassandra-database nodetool'
+```
+cqlsh -e "..."     # executa um comando CQL
+nodetool ...       # consulta e opera o nó
 ```
 
 ### Convenções
@@ -101,80 +100,89 @@ A diferença entre os dois últimos importa: o Cassandra recusa consultas mal mo
 - [A. Busca vetorial](#a-busca-vetorial)
 - [B. Encerrando o ambiente](#b-encerrando-o-ambiente)
 - [C. Troubleshooting](#c-troubleshooting)
+- [D. Execução local](#d-execução-local)
 
 ---
 
 ## 1. O ambiente
 
-Baixe o arquivo do Docker Compose:
+O laboratório roda em uma instância **AWS EC2** (`t3.large`) criada automaticamente a partir do **AWS CloudShell**. A instância executa um único container com o **code-server** (Visual Studio Code no navegador) e um nó **Apache Cassandra 5.0** — com as duas keyspaces do curso carregadas no primeiro boot.
+
+> **ATENÇÃO:**
+> 1. **Região:** utilize sempre a região **Norte da Virgínia (`us-east-1`)** no Console AWS.
+> 2. **Custos:** a instância EC2 e o volume EBS consomem créditos do seu laboratório AWS Academy. Ao encerrar a aula, garanta que a instância esteja parada (**Stopped**) ou aguarde o desligamento automático da sessão.
+> 3. **Não recrie a máquina:** se a instância já existir, siga as instruções de [Retomando o laboratório](#retomando-o-laboratório).
+
+### Passo 1: Abrir o AWS CloudShell
+
+1. Faça login no Console da AWS através do seu painel do AWS Academy.
+2. Certifique-se de que a região selecionada no canto superior direito é **N. Virginia (`us-east-1`)**.
+3. No topo do console, clique no ícone do **AWS CloudShell** (`>_`) ao lado da barra de pesquisa.
+4. Aguarde o terminal do CloudShell carregar.
+
+### Passo 2: Executar o script de provisionamento
+
+No terminal do CloudShell, execute:
 
 ```sh
-wget https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/compose.yaml
+curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo/main/launch-lab.sh | bash
 
 ```
 
-Veja o que ele descreve — um nó Cassandra e dois containers de carga, um por keyspace:
+O script realiza de forma automatizada:
+
+- Descoberta da VPC padrão e de uma subnet pública.
+- Criação do Security Group `lab-cassandra-sg`, liberando as portas `8080` (IDE) e `22` (SSH).
+- Lançamento da instância EC2 `lab-cassandra-widecolumn` (`t3.large`, Ubuntu 24.04, 20 GB gp3).
+- Instalação do Docker e inicialização do container `cassandra-lab` (code-server + Cassandra).
+- Exibição do IP público e do link de acesso.
+
+### Passo 3: Acessar a IDE
+
+1. Abra no navegador o link exibido ao final do script: `http://<IP-PUBLICO>:8080`.
+2. Caso a página não responda, **aguarde de 3 a 5 minutos** para que o Docker conclua o download da imagem e atualize o navegador.
+3. O code-server abre diretamente na IDE, sem solicitar senha.
+4. Abra um terminal: menu superior (três linhas horizontais) > **Terminal** > **New Terminal**.
+
+> **Atenção!** Todos os comandos deste laboratório são executados no **terminal do code-server**. O CloudShell só serve para criar a instância.
+
+### Retomando o laboratório
+
+Se a sessão do AWS Academy expirar, a instância será parada. **Não execute o `launch-lab.sh` novamente.**
+
+1. No Console AWS (`us-east-1`), acesse **EC2** > **Instances**.
+2. Selecione a instância **`lab-cassandra-widecolumn`** e clique em **Instance state** > **Start instance**.
+3. Aguarde o status **Running** e copie o novo **Public IPv4 address** (ele muda a cada reinício).
+4. Acesse `http://<NOVO_IP_PUBLICO>:8080`. O container reinicia automaticamente e os dados do Cassandra — inclusive a sua keyspace `lab` — são preservados.
+
+> Ao religar, o Cassandra leva cerca de **30 segundos** para voltar a aceitar conexões, mesmo com a IDE já aberta. Se o primeiro comando devolver `Connection refused`, espere e repita.
+
+### O que acontece no primeiro boot
+
+O container sobe o Cassandra e, assim que o nó está pronto, carrega as duas keyspaces do curso. Isso leva cerca de **um minuto**, e roda em segundo plano — a IDE abre antes de terminar. Para acompanhar a carga:
 
 ```sh
-cat compose.yaml
-
-```
-
-Suba o ambiente:
-
-```sh
-docker compose up -d
+cat /var/log/lab/carga.log
 
 ```
 
 ```
- Network cassandra5-demo_default Created
- Container cassandra-database Creating
- Container cassandra-database Started
- Container cassandra-database Waiting
- Container cassandra-database Healthy
- Container cassandra-init-ecommerce Starting
- Container cassandra-init-infobarbank Starting
- Container cassandra-init-ecommerce Started
- Container cassandra-init-infobarbank Started
+[carga] Cassandra pronto.
+Carregando infobarbank (log: /var/log/lab/carga-infobarbank.log)...
+Carregando ecommerce (log: /var/log/lab/carga-ecommerce.log)...
+infobarbank: ok
+ecommerce: ok
+Keyspaces prontas.
 ```
 
-Repare na linha `Waiting`: o comando só retorna depois que o Cassandra passa no healthcheck, porque os containers de carga declaram `depends_on: service_healthy`. Isso leva cerca de **um minuto**. Depois disso, a carga das duas keyspaces leva outros **30 segundos** — e essa parte roda em segundo plano, então o prompt volta antes de terminar.
+As três últimas linhas são as que importam: cada gerador criou a sua keyspace, inseriu os dados e terminou. Se o arquivo ainda não tiver chegado ao fim, espere alguns segundos e repita o `cat`.
 
-Para acompanhar a carga:
-
-```sh
-docker compose logs -f cassandra-init-ecommerce
-
-```
-
-```
-cassandra-init-ecommerce  | Carregadas 11959 linhas em pedido_detalhe (2.6s).
-cassandra-init-ecommerce  | Keyspace ecommerce pronta em 25.8s. Cliente-âncora: CLI-000001.
-```
-
-> Para sair do `logs -f`, digite `Control+C` uma única vez.
-
-### O que foi criado
-
-```sh
-docker ps -a
-
-```
-
-```
-NAMES                        IMAGE                                        STATUS
-cassandra-init-ecommerce     ...cassandra-gerador-esquema-ecommerce:3.0   Exited (0) 4 minutes ago
-cassandra-init-infobarbank   ...cassandra-gerador-esquema-infobarbank:1.0 Exited (0) 4 minutes ago
-cassandra-database           cassandra:5.0.8                              Up 6 minutes (healthy)
-```
-
-Os dois containers de carga aparecem como `Exited (0)`, e **é isso que se espera deles**: cada um cria a sua keyspace, insere os dados e termina. `Exited (0)` significa que terminaram sem erro. Só o `cassandra-database` fica no ar.
+> A carga roda **só no primeiro boot**. Quando a instância é religada, as keyspaces não são recarregadas — o que você fez nelas continua lá.
 
 ### Verificando o ambiente
 
 ```sh
-curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/scripts/check.sh | bash
+curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo/main/scripts/check.sh | bash
 
 ```
 
@@ -186,7 +194,7 @@ Keyspaces
 
 Dados
   ✓ infobarbank.cliente: 50 clientes
-  ✓ ecommerce.pedido_detalhe: 11959 pedidos
+  ✓ ecommerce.pedido_detalhe: 12004 pedidos
 
 Resultado
   Ambiente pronto.
@@ -194,32 +202,24 @@ Resultado
 
 Guarde este comando. Sempre que uma seção não se comportar como o texto descreve, rode-o: ele diz o que está faltando em vez de deixar você adivinhar.
 
-### Dois atalhos
+### As duas ferramentas
 
-O `cqlsh` e o `nodetool` estão dentro do container, mas você **não vai entrar nele em momento algum** neste laboratório. Em vez disso, defina dois atalhos:
-
-```sh
-alias cql='docker exec -it cassandra-database cqlsh -e'
-alias nt='docker exec -it cassandra-database nodetool'
-
-```
-
-Teste:
+O `cqlsh` e o `nodetool` estão no `PATH` do terminal. Teste:
 
 ```sh
-cql "SELECT release_version FROM system.local;"
+cqlsh -e "SELECT release_version FROM system.local;"
 
 ```
 
 ```
  release_version
 -----------------
-           5.0.8
+           5.0.9
 
 (1 rows)
 ```
 
-> Os `alias` valem apenas para **este terminal**. Se abrir outro, ou fechar e reabrir, defina-os de novo. Se algum comando adiante devolver `cql: command not found`, é isso que aconteceu.
+O `-e` executa um comando e sai — é a forma usada em todo o laboratório. Mais sobre isso na próxima seção.
 
 **→ Próxima seção.** O ambiente está no ar e duas keyspaces já foram carregadas por outra pessoa. Antes de criar as suas, vale saber o que exatamente está rodando aí.
 
@@ -230,7 +230,7 @@ cql "SELECT release_version FROM system.local;"
 ### O que existe no nó
 
 ```sh
-cql "DESCRIBE KEYSPACES;"
+cqlsh -e "DESCRIBE KEYSPACES;"
 
 ```
 
@@ -245,24 +245,24 @@ Duas keyspaces são do curso — `infobarbank` e `ecommerce`. As outras seis sã
 ### Quem é este nó
 
 ```sh
-cql "SELECT cluster_name, release_version, cql_version, data_center, rack FROM system.local;"
+cqlsh -e "SELECT cluster_name, release_version, cql_version, data_center, rack FROM system.local;"
 
 ```
 
 ```
  cluster_name   | release_version | cql_version | data_center | rack
 ----------------+-----------------+-------------+-------------+------
- infobarbosainc |           5.0.8 |       3.4.7 | datacenter1 | RAC1
+ infobarbosainc |           5.0.9 |       3.4.7 | datacenter1 | RAC1
 
 (1 rows)
 ```
 
-`system.local` é a tabela em que o nó guarda o que sabe sobre si mesmo. Note que ele se declara em um **datacenter** (`datacenter1`) e em um **rack** (`RAC1`) — nomes que vieram do `compose.yaml`. Um nó só, mas já se apresentando com endereço na topologia. Isso vai importar na próxima seção.
+`system.local` é a tabela em que o nó guarda o que sabe sobre si mesmo. Note que ele se declara em um **datacenter** (`datacenter1`) e em um **rack** (`RAC1`) — nomes que vieram da configuração do nó, preparada na imagem do laboratório. Um nó só, mas já se apresentando com endereço na topologia. Isso vai importar na próxima seção.
 
 ### O ponto de vista do operador
 
 ```sh
-nt status
+nodetool status
 
 ```
 
@@ -271,39 +271,39 @@ Datacenter: datacenter1
 =======================
 Status=Up/Down
 |/ State=Normal/Leaving/Joining/Moving
---  Address     Load        Tokens  Owns (effective)  Host ID                               Rack
-UN  172.21.0.2  111.45 KiB  16      100.0%            15ae1f2b-82f9-4753-afaa-b21bc7813e4a  RAC1
+--  Address    Load        Tokens  Owns (effective)  Host ID                               Rack
+UN  127.0.0.1  117.82 KiB  16      100.0%            607a239d-b7ac-4361-9792-6d46a197cbef  RAC1
 ```
 
-O `Host ID`, o `Address` e o `Load` do seu ambiente serão diferentes dos que aparecem aqui — são gerados na criação do container. O que deve coincidir é o resto.
+O `Host ID` e o `Load` do seu ambiente serão diferentes dos que aparecem aqui — são gerados na criação do container. O `Address` é `127.0.0.1` porque o nó só atende dentro do próprio container: o `cqlsh`, o `nodetool` e, na Parte III, a aplicação Python rodam ao lado dele.
 
 `UN` é a leitura mais frequente do dia a dia de quem opera Cassandra: **U**p e **N**ormal. A legenda logo acima do resultado explica as combinações possíveis — um nó entrando no cluster, por exemplo, aparece como `UJ` (Up, Joining).
 
 Duas colunas para guardar: `Owns` diz que este nó responde por 100% dos dados, o que é esperado quando há um nó só; e `Tokens 16` diz que ele ocupa dezesseis posições no anel de tokens. O que são esses tokens é assunto da seção 5.
 
-> Se o `nt status` devolver `Server is not initialized yet, cannot run nodetool`, o serviço ainda está subindo. Espere alguns segundos e repita.
+> Se o `nodetool status` devolver `Server is not initialized yet, cannot run nodetool`, o serviço ainda está subindo. Espere alguns segundos e repita.
 
 ### Sobre o `cqlsh`
 
 O `cqlsh` é a linha de comando do Cassandra, e fala **CQL** (Cassandra Query Language). Ele tem dois modos:
 
-- **Não interativo**, com `-e` ou `--execute`: executa um comando e sai. É o que o nosso `alias cql` faz, e é a forma usada em scripts de manutenção.
+- **Não interativo**, com `-e` ou `--execute`: executa um comando e sai. É a forma usada em todo este laboratório, e em scripts de manutenção.
 - **Interativo**, sem parâmetro: abre um prompt `cqlsh>` que fica aguardando comandos.
 
 Este laboratório usa o modo não interativo do começo ao fim — assim nenhum comando depende de você estar "dentro" de algum lugar. Se quiser conhecer o modo interativo:
 
 ```sh
-docker exec -it cassandra-database cqlsh
+cqlsh
 
 ```
 
 ```
-ATTENTION: All commands will be saved to history file: /root/.cassandra/cqlsh_history
+ATTENTION: All commands will be saved to history file: /home/barbosa/.cassandra/cqlsh_history
 This may include sensitive information such as passwords.
 [...]
 
 Connected to infobarbosainc at 127.0.0.1:9042
-[cqlsh 6.2.0 | Cassandra 5.0.8 | CQL spec 3.4.7 | Native protocol v5]
+[cqlsh 6.2.0 | Cassandra 5.0.9 | CQL spec 3.4.7 | Native protocol v5]
 Use HELP for help.
 cqlsh>
 ```
@@ -325,7 +325,7 @@ O papel importante dela, porém, é **físico**: é na keyspace que se define co
 Crie a sua:
 
 ```sh
-cql "
+cqlsh -e "
 CREATE KEYSPACE lab
     WITH REPLICATION = {
         'class': 'NetworkTopologyStrategy',
@@ -337,7 +337,7 @@ CREATE KEYSPACE lab
 Conferindo:
 
 ```sh
-cql "DESCRIBE KEYSPACE lab;"
+cqlsh -e "DESCRIBE KEYSPACE lab;"
 
 ```
 
@@ -358,7 +358,7 @@ CREATE KEYSPACE [IF NOT EXISTS] nome_da_keyspace
 
 A `SimpleStrategy` distribui as réplicas ignorando a topologia: para ela não existem datacenters nem racks. Funciona, inclusive nesta versão, mas só faz sentido em ambiente de estudo com um nó.
 
-Usamos `NetworkTopologyStrategy` porque é ela que permite dizer **quantas cópias em cada datacenter** — e porque é coerente com o `compose.yaml`, que configurou o nó com `GossipingPropertyFileSnitch`, `CASSANDRA_DC=datacenter1` e `CASSANDRA_RACK=RAC1`. É também a estratégia usada pelas duas keyspaces do curso.
+Usamos `NetworkTopologyStrategy` porque é ela que permite dizer **quantas cópias em cada datacenter** — e porque é coerente com a configuração do nó, que usa o `GossipingPropertyFileSnitch` e se declara no datacenter `datacenter1`, rack `RAC1`. É também a estratégia usada pelas duas keyspaces do curso.
 
 Os nomes dos datacenters não são etiquetas livres: precisam existir na topologia declarada pelo administrador. Nomear um datacenter inexistente é recusado:
 
@@ -431,7 +431,7 @@ Nada disso se demonstra com um nó. Derrubar réplicas, acompanhar `nodetool rep
 Vamos cadastrar clientes. Estas cinco pessoas você vai reencontrar na Parte II, no sistema do banco — inclusive com o mesmo `id_cliente`:
 
 ```sh
-cql "
+cqlsh -e "
 CREATE TABLE lab.cliente (
     id_cliente  text PRIMARY KEY,
     cpf         text,
@@ -445,7 +445,7 @@ CREATE TABLE lab.cliente (
 ### O que o Cassandra realmente criou
 
 ```sh
-cql "DESCRIBE TABLE lab.cliente;"
+cqlsh -e "DESCRIBE TABLE lab.cliente;"
 
 ```
 
@@ -482,7 +482,7 @@ A segunda: você escreveu cinco linhas e o Cassandra completou umas vinte opçõ
 ### INSERT
 
 ```sh
-cql "
+cqlsh -e "
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b162060','987.539.360-60','MARIVALDA','KANAMARY','marivalda@bmail.com');
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16242a','124.554.260-50','JUCILENE','MOREIRA CRUZ','jucilene@bmail.com');
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16256a','324.873.000-51','GRACIMAR','BRASIL GUERRA','gracimar@bmail.com');
@@ -494,7 +494,7 @@ INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b1636
 ### SELECT
 
 ```sh
-cql "SELECT id_cliente, nome, sobrenome FROM lab.cliente;"
+cqlsh -e "SELECT id_cliente, nome, sobrenome FROM lab.cliente;"
 
 ```
 
@@ -515,7 +515,7 @@ cql "SELECT id_cliente, nome, sobrenome FROM lab.cliente;"
 Busca pela chave, que é a consulta que o Cassandra faz melhor:
 
 ```sh
-cql "SELECT * FROM lab.cliente WHERE id_cliente = '2b162060';"
+cqlsh -e "SELECT * FROM lab.cliente WHERE id_cliente = '2b162060';"
 
 ```
 
@@ -532,7 +532,7 @@ Agora uma busca por um campo que **não** é chave:
 > **Provoque este erro.**
 
 ```sh
-cql "SELECT * FROM lab.cliente WHERE nome = 'MARIVALDA';"
+cqlsh -e "SELECT * FROM lab.cliente WHERE nome = 'MARIVALDA';"
 
 ```
 
@@ -550,12 +550,12 @@ O `ALLOW FILTERING` sugerido na mensagem existe e faz exatamente o que o nome di
 ### UPDATE
 
 ```sh
-cql "UPDATE lab.cliente SET email = 'aldenora.moreira@bmail.com' WHERE id_cliente = '2b16353c';"
+cqlsh -e "UPDATE lab.cliente SET email = 'aldenora.moreira@bmail.com' WHERE id_cliente = '2b16353c';"
 
 ```
 
 ```sh
-cql "SELECT id_cliente, nome, email FROM lab.cliente WHERE id_cliente = '2b16353c';"
+cqlsh -e "SELECT id_cliente, nome, email FROM lab.cliente WHERE id_cliente = '2b16353c';"
 
 ```
 
@@ -570,12 +570,12 @@ cql "SELECT id_cliente, nome, email FROM lab.cliente WHERE id_cliente = '2b16353
 Agora experimente atualizar uma chave que não existe:
 
 ```sh
-cql "UPDATE lab.cliente SET nome = 'FANTASMA' WHERE id_cliente = 'NAO-EXISTE';"
+cqlsh -e "UPDATE lab.cliente SET nome = 'FANTASMA' WHERE id_cliente = 'NAO-EXISTE';"
 
 ```
 
 ```sh
-cql "SELECT id_cliente, nome, cpf FROM lab.cliente WHERE id_cliente = 'NAO-EXISTE';"
+cqlsh -e "SELECT id_cliente, nome, cpf FROM lab.cliente WHERE id_cliente = 'NAO-EXISTE';"
 
 ```
 
@@ -594,17 +594,17 @@ Por isso também não existe erro de chave duplicada. Um `INSERT` com uma chave 
 ### DELETE
 
 ```sh
-cql "DELETE FROM lab.cliente WHERE id_cliente = 'NAO-EXISTE';"
+cqlsh -e "DELETE FROM lab.cliente WHERE id_cliente = 'NAO-EXISTE';"
 
 ```
 
 ```sh
-cql "DELETE FROM lab.cliente WHERE id_cliente = '2b16256a';"
+cqlsh -e "DELETE FROM lab.cliente WHERE id_cliente = '2b16256a';"
 
 ```
 
 ```sh
-cql "SELECT id_cliente, nome FROM lab.cliente WHERE id_cliente = '2b16256a';"
+cqlsh -e "SELECT id_cliente, nome FROM lab.cliente WHERE id_cliente = '2b16256a';"
 
 ```
 
@@ -631,7 +631,7 @@ Toda linha que você grava vai para uma **partição**, e a partição é escolh
 O resultado dessa função é um número chamado **token**, e ele dá para consultar:
 
 ```sh
-cql "SELECT id_cliente, token(id_cliente), nome FROM lab.cliente;"
+cqlsh -e "SELECT id_cliente, token(id_cliente), nome FROM lab.cliente;"
 
 ```
 
@@ -653,31 +653,31 @@ O token é um inteiro de 64 bits, produzido pelo particionador `Murmur3Partition
 ### O anel deste nó
 
 ```sh
-nt ring
+nodetool ring
 
 ```
 
 ```
 Datacenter: datacenter1
 ==========
-Address          Rack        Status State   Load            Owns                Token
-                                                                                9136285029854853100
-172.21.0.2       RAC1        Up     Normal  113.55 KiB      100.00%             -7720454491340799877
+Address         Rack        Status State   Load            Owns                Token
+                                                                               8953171646460077952
+127.0.0.1       RAC1        Up     Normal  93.02 KiB       100.00%             -8250052421568881691
 [... quatro linhas ...]
-172.21.0.2       RAC1        Up     Normal  113.55 KiB      100.00%             -1157312431376904826
-172.21.0.2       RAC1        Up     Normal  113.55 KiB      100.00%              -312935783885743070
-172.21.0.2       RAC1        Up     Normal  113.55 KiB      100.00%              1127332446016840168
+127.0.0.1       RAC1        Up     Normal  93.02 KiB       100.00%             -1316880576939703052
+127.0.0.1       RAC1        Up     Normal  93.02 KiB       100.00%             -220838676704764763
+127.0.0.1       RAC1        Up     Normal  93.02 KiB       100.00%             870458433987447496
 [... mais oito linhas ...]
 
   Warning: "nodetool ring" is used to output all the tokens of a node.
   To view status related info of a node use "nodetool status" instead.
 ```
 
-Dezesseis linhas para um único nó — o mesmo `Tokens 16` que o `nt status` mostrou na seção 2. O nó não ocupa uma posição no anel, ocupa dezesseis, e cada uma delas responde por uma faixa que **termina** no token da linha. Isso se chama **vnodes**, e existe para que a entrada ou saída de um nó redistribua o dado em pedaços pequenos, em vez de mover metade do cluster.
+Dezesseis linhas para um único nó — o mesmo `Tokens 16` que o `nodetool status` mostrou na seção 2. O nó não ocupa uma posição no anel, ocupa dezesseis, e cada uma delas responde por uma faixa que **termina** no token da linha. Isso se chama **vnodes**, e existe para que a entrada ou saída de um nó redistribua o dado em pedaços pequenos, em vez de mover metade do cluster.
 
-Agora localize a Marivalda. O token dela é `-754340186604780055`, e no trecho acima ele cai entre `-1157312431376904826` e `-312935783885743070`. Essa faixa é a que responde por ela.
+Agora localize a Marivalda. O token dela é `-754340186604780055`, e no trecho acima ele cai entre `-1316880576939703052` e `-220838676704764763`. Essa faixa é a que responde por ela.
 
-> Os valores de token do **anel** são sorteados quando o nó é criado, então os do seu ambiente serão outros. Os valores de token das **linhas** não: `token('2b162060')` devolve `-754340186604780055` em qualquer instalação, porque é um hash da chave. Procure no seu `nt ring` a faixa que contém esse número.
+> Os valores de token do **anel** são sorteados quando o nó é criado, então os do seu ambiente serão outros. Os valores de token das **linhas** não: `token('2b162060')` devolve `-754340186604780055` em qualquer instalação, porque é um hash da chave. Procure no seu `nodetool ring` a faixa que contém esse número.
 
 Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, cada um ficaria com aproximadamente metade das faixas, e cada partição passaria a ter um endereço não só no disco, mas na rede. Esse é o assunto do laboratório de cluster.
 
@@ -707,17 +707,12 @@ Só isso. Nenhuma escrita em arquivo de dados, nenhuma leitura do que já existi
 
 Nesta seção vamos acompanhar o resto do caminho: da memtable até o disco, e daí até a compactação.
 
-Um terceiro atalho, só para esta seção, porque vamos olhar arquivos:
-
-```sh
-alias cass='docker exec -it cassandra-database'
-
-```
+Os arquivos do Cassandra ficam em `/var/lib/cassandra`, e o seu usuário pode lê-los sem `sudo`: ele pertence ao grupo `cassandra`, dono desses diretórios.
 
 ### Onde a tabela mora no disco
 
 ```sh
-DIR=$(docker exec cassandra-database sh -c 'ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1')
+DIR=$(ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1)
 echo $DIR
 
 ```
@@ -731,14 +726,14 @@ O caminho é `keyspace/tabela-uuid`, e o UUID é sorteado na criação da tabela
 > O `| tail -1` não é decoração. Um `DROP TABLE` não remove o diretório: ele guarda um snapshot e deixa a pasta antiga no lugar. Se você recriar a tabela, passam a existir dois diretórios `cliente-*`, e sem o `tail -1` a variável receberia os dois caminhos de uma vez. Pegando sempre o mais recente, o comando funciona quantas vezes você repetir esta seção.
 
 ```sh
-cass ls -la $DIR
+ls -la $DIR
 
 ```
 
 ```
 total 8
-drwxr-xr-x 2 cassandra cassandra 4096 Jul 25 17:50 .
-drwxr-xr-x 3 cassandra cassandra 4096 Jul 25 17:50 ..
+drwxr-x--- 2 cassandra cassandra 4096 Oct 10 10:03 .
+drwxr-x--- 3 cassandra cassandra 4096 Oct 10 10:03 ..
 ```
 
 **Vazio.** Você inseriu cinco clientes, atualizou um, apagou dois, e consultou tudo isso com sucesso — e não existe um único arquivo de dados. Onde está?
@@ -746,13 +741,13 @@ drwxr-xr-x 3 cassandra cassandra 4096 Jul 25 17:50 ..
 ### No commit log
 
 ```sh
-cass ls -la /var/lib/cassandra/commitlog/
+ls -la /var/lib/cassandra/commitlog/
 
 ```
 
 ```
--rw-r--r-- 1 cassandra cassandra 33554432 Jul 25 19:16 CommitLog-7-1785006544169.log
--rw-r--r-- 1 cassandra cassandra 33554432 Jul 25 19:16 CommitLog-7-1785006544170.log
+-rw-r----- 1 cassandra cassandra 33554432 Oct 10 10:03 CommitLog-7-1791626562385.log
+-rw-r----- 1 cassandra cassandra 33554432 Oct 10 10:02 CommitLog-7-1791626562386.log
 ```
 
 Os 32 MB de cada arquivo são **pré-alocados**: o tamanho não diz nada sobre quanto dado existe. O Cassandra reserva o espaço adiantado justamente para que a escrita seja uma gravação sequencial no fim de um arquivo que já está lá.
@@ -760,35 +755,35 @@ Os 32 MB de cada arquivo são **pré-alocados**: o tamanho não diz nada sobre q
 Procure algo que só existe por causa do que você fez na seção 4 — a linha fantasma do upsert:
 
 ```sh
-cass sh -c "grep --text -o 'FANTASMA' /var/lib/cassandra/commitlog/*.log"
+grep --text -o 'FANTASMA' /var/lib/cassandra/commitlog/*.log
 
 ```
 
 ```
-/var/lib/cassandra/commitlog/CommitLog-7-1785006544169.log:FANTASMA
+/var/lib/cassandra/commitlog/CommitLog-7-1791626562385.log:FANTASMA
 ```
 
 O `grep` informa em qual dos arquivos encontrou — os nomes serão outros no seu ambiente, porque incluem o instante de criação do segmento. E o e-mail que você atualizou:
 
 ```sh
-cass sh -c "grep --text -o 'aldenora.moreira@bmail.com' /var/lib/cassandra/commitlog/*.log"
+grep --text -o 'aldenora.moreira@bmail.com' /var/lib/cassandra/commitlog/*.log
 
 ```
 
 ```
-/var/lib/cassandra/commitlog/CommitLog-7-1785006544169.log:aldenora.moreira@bmail.com
+/var/lib/cassandra/commitlog/CommitLog-7-1791626562385.log:aldenora.moreira@bmail.com
 ```
 
 Está tudo ali, em texto claro. Agora experimente com um nome:
 
 ```sh
-cass sh -c "grep -c --text 'MARIVALDA' /var/lib/cassandra/commitlog/*.log"
+grep -c --text 'MARIVALDA' /var/lib/cassandra/commitlog/*.log
 
 ```
 
 ```
-/var/lib/cassandra/commitlog/CommitLog-7-1785006544169.log:9
-/var/lib/cassandra/commitlog/CommitLog-7-1785006544171.log:0
+/var/lib/cassandra/commitlog/CommitLog-7-1791626562385.log:9
+/var/lib/cassandra/commitlog/CommitLog-7-1791626562386.log:0
 ```
 
 Nove ocorrências, e você inseriu a Marivalda uma vez. O motivo: **o commit log é do nó, não da tabela**. Ele recebe as escritas de todas as tabelas de todas as keyspaces, em um único fluxo sequencial — e a Marivalda também é cliente do `infobarbank` e da loja `ecommerce`, cada um com suas tabelas.
@@ -804,25 +799,27 @@ Isso responde por que a escrita não fica mais lenta conforme você cria tabelas
 `nodetool flush` força a memtable a descer para o disco:
 
 ```sh
-cass nodetool flush lab cliente
+nodetool flush lab cliente
 
 ```
 
 ```sh
-cass ls -la $DIR
+ls -la $DIR
 
 ```
 
 ```
 total 44
--rw-r--r-- 1 cassandra cassandra   47 Jul 25 19:16 nb-1-big-CompressionInfo.db
--rw-r--r-- 1 cassandra cassandra  338 Jul 25 19:16 nb-1-big-Data.db
--rw-r--r-- 1 cassandra cassandra   10 Jul 25 19:16 nb-1-big-Digest.crc32
--rw-r--r-- 1 cassandra cassandra   24 Jul 25 19:16 nb-1-big-Filter.db
--rw-r--r-- 1 cassandra cassandra   78 Jul 25 19:16 nb-1-big-Index.db
--rw-r--r-- 1 cassandra cassandra 4973 Jul 25 19:16 nb-1-big-Statistics.db
--rw-r--r-- 1 cassandra cassandra   68 Jul 25 19:16 nb-1-big-Summary.db
--rw-r--r-- 1 cassandra cassandra   92 Jul 25 19:16 nb-1-big-TOC.txt
+drwxr-x--- 2 cassandra cassandra 4096 Oct 10 10:03 .
+drwxr-x--- 3 cassandra cassandra 4096 Oct 10 10:03 ..
+-rw-r----- 1 cassandra cassandra   47 Oct 10 10:03 nb-1-big-CompressionInfo.db
+-rw-r----- 1 cassandra cassandra  338 Oct 10 10:03 nb-1-big-Data.db
+-rw-r----- 1 cassandra cassandra   10 Oct 10 10:03 nb-1-big-Digest.crc32
+-rw-r----- 1 cassandra cassandra   24 Oct 10 10:03 nb-1-big-Filter.db
+-rw-r----- 1 cassandra cassandra   78 Oct 10 10:03 nb-1-big-Index.db
+-rw-r----- 1 cassandra cassandra 4973 Oct 10 10:03 nb-1-big-Statistics.db
+-rw-r----- 1 cassandra cassandra   68 Oct 10 10:03 nb-1-big-Summary.db
+-rw-r----- 1 cassandra cassandra   92 Oct 10 10:03 nb-1-big-TOC.txt
 ```
 
 > O `Data.db` do seu ambiente pode ter um ou dois bytes de diferença. Os timestamps de cada escrita são gravados dentro do arquivo, em codificação de largura variável, e a sua execução aconteceu em outro instante.
@@ -845,7 +842,7 @@ Oito arquivos, todos com o prefixo `nb-1-big`. Juntos eles formam **uma SSTable*
 São pouco mais de trezentos bytes. Cabe inteiro na tela:
 
 ```sh
-cass sh -c "od -A d -t x1z -v $DIR/nb-1-big-Data.db"
+od -A d -t x1z -v $DIR/nb-1-big-Data.db
 
 ```
 
@@ -876,14 +873,14 @@ Três coisas nesse despejo.
 
 **Tudo legível.** CPF, e-mail e nome completo em texto claro, sem nenhum esforço para lê-los. O `LZ4Compressor` que apareceu no `DESCRIBE TABLE` comprime, mas não cifra — e comprime por blocos, então trechos ficam intactos. Se dado sensível precisa estar cifrado em repouso, isso é configuração de disco ou de sistema de arquivos, não algo que o Cassandra faça por você.
 
-> Se o seu ambiente tiver `hexdump` instalado, `hexdump -C` produz uma saída equivalente e um pouco mais confortável de ler. Usamos `od` porque ele já vem na imagem, e instalar pacote no meio do laboratório é atrito desnecessário.
+> O `hexdump -C $DIR/nb-1-big-Data.db` produz uma saída equivalente, também disponível no ambiente. Usamos `od` porque ele existe em qualquer Linux, inclusive nos servidores em que você não pode instalar nada.
 
 ### O tombstone
 
 O hexadecimal mostra que a linha apagada está no arquivo. Para ver **o que** ela guarda, existe uma ferramenta melhor, que traduz a SSTable para JSON:
 
 ```sh
-cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-1-big-Data.db"
+sstabledump $DIR/nb-1-big-Data.db
 
 ```
 
@@ -912,14 +909,12 @@ Aqui está a promessa da seção 4, cumprida. A Gracimar não foi apagada: o `DE
 
 Faz sentido, dado tudo o que você viu: apagar de verdade exigiria localizar o dado e reescrever o arquivo. Num sistema em que arquivo de dados nunca é modificado, apagar é mais uma escrita. O `SELECT` da seção 4 devolveu vazio porque a leitura encontrou o tombstone e o respeitou.
 
-> O `sstabledump` fica em `/opt/cassandra/tools/bin/`, que não está no `PATH` — daí o caminho completo.
-
 ### Ciclo 2 — arquivo de dados não se altera
 
 Insira mais duas clientes:
 
 ```sh
-cql "
+cqlsh -e "
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16396a','661.428.060-00','IVONE','GLAUCIA VIANA DUTRA','ivone@bmail.com');
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b163bcc','190.523.300-00','LUCILIA','ROSA LIMA PEREIRA','lucilia@yahoo.com');"
 
@@ -928,24 +923,24 @@ INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b163b
 O arquivo que já existe mudou?
 
 ```sh
-cass sh -c "ls -l $DIR/nb-1-big-Data.db; grep -c --text IVONE $DIR/nb-1-big-Data.db"
+ls -l $DIR/nb-1-big-Data.db; grep -c --text IVONE $DIR/nb-1-big-Data.db
 
 ```
 
 ```
--rw-r--r-- 1 cassandra cassandra 338 Jul 25 19:16 .../nb-1-big-Data.db
+-rw-r----- 1 cassandra cassandra 338 Oct 10 10:03 .../nb-1-big-Data.db
 0
 ```
 
 Mesmo tamanho, mesmo horário, e a Ivone não está nele. Agora um novo flush:
 
 ```sh
-cass nodetool flush lab cliente
+nodetool flush lab cliente
 
 ```
 
 ```sh
-cass sh -c "ls -1 $DIR/*-Data.db"
+ls -1 $DIR/*-Data.db
 
 ```
 
@@ -965,7 +960,7 @@ Mas o número de arquivos não pode crescer para sempre.
 Vamos atualizar o sobrenome da Marivalda para algo bem grande, de modo que fique fácil de achar no disco:
 
 ```sh
-cql "
+cqlsh -e "
 UPDATE lab.cliente
 SET sobrenome = 'DE ALCÂNTARA FRANCISCO ANTÔNIO JOÃO CARLOS XAVIER DE PAULA MIGUEL RAFAEL JOAQUIM JOSÉ GONZAGA PASCOAL CIPRIANO SERAFIM DE BRAGANÇA E BOURBON KANAMARY'
 WHERE id_cliente = '2b162060';"
@@ -973,12 +968,12 @@ WHERE id_cliente = '2b162060';"
 ```
 
 ```sh
-cass nodetool flush lab cliente
+nodetool flush lab cliente
 
 ```
 
 ```sh
-cass sh -c "ls -l $DIR/*-Data.db | awk '{print \$5, \$NF}'"
+ls -l $DIR/*-Data.db | awk '{print $5, $NF}'
 
 ```
 
@@ -991,7 +986,7 @@ cass sh -c "ls -l $DIR/*-Data.db | awk '{print \$5, \$NF}'"
 Três arquivos. E agora existem **duas versões do sobrenome da Marivalda no disco**: o `KANAMARY` original no `nb-1` e o nome comprido no `nb-3`.
 
 ```sh
-cass sh -c "grep --text -o 'BOURBON KANAMARY' $DIR/nb-3-big-Data.db"
+grep --text -o 'BOURBON KANAMARY' $DIR/nb-3-big-Data.db
 
 ```
 
@@ -1002,12 +997,12 @@ BOURBON KANAMARY
 A leitura resolve isso comparando timestamps e devolvendo o valor mais recente — o que funciona, mas custa. Cedo ou tarde é preciso consolidar. Normalmente o Cassandra faz isso sozinho, por conta da `SizeTieredCompactionStrategy` que apareceu no `DESCRIBE TABLE`; aqui vamos forçar:
 
 ```sh
-cass nodetool compact lab cliente
+nodetool compact lab cliente
 
 ```
 
 ```sh
-cass sh -c "ls -l $DIR/*-Data.db | awk '{print \$5, \$NF}'"
+ls -l $DIR/*-Data.db | awk '{print $5, $NF}'
 
 ```
 
@@ -1022,7 +1017,7 @@ Três arquivos viraram um. Isso é **compactação**, e o conceito por trás del
 Veja o que sobrou da Marivalda:
 
 ```sh
-cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-4-big-Data.db"
+sstabledump $DIR/nb-4-big-Data.db
 
 ```
 
@@ -1049,7 +1044,7 @@ Uma única célula `sobrenome`, com o valor novo. E repare no detalhe: ela tem *
 ### O tombstone que sobreviveu
 
 ```sh
-cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-4-big-Data.db" | grep -B3 deletion_info
+sstabledump $DIR/nb-4-big-Data.db | grep -B3 deletion_info
 
 ```
 
@@ -1063,7 +1058,7 @@ cass sh -c "/opt/cassandra/tools/bin/sstabledump $DIR/nb-4-big-Data.db" | grep -
 A compactação descartou o sobrenome antigo da Marivalda, mas **manteve os dois tombstones**. Por quê?
 
 ```sh
-cql "SELECT gc_grace_seconds FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
+cqlsh -e "SELECT gc_grace_seconds FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
 
 ```
 
@@ -1098,7 +1093,7 @@ No modelo relacional isso é uma tabela `lancamento` com chave estrangeira e um 
 > **Provoque este erro.**
 
 ```sh
-cql "
+cqlsh -e "
 SELECT nome_completo, valor
 FROM infobarbank.cliente
 JOIN infobarbank.lancamentos_por_periodo
@@ -1116,7 +1111,7 @@ Leia com atenção: **`expecting EOF`**. O interpretador chegou ao fim do nome d
 > **Provoque este erro.**
 
 ```sh
-cql "SELECT * FROM infobarbank.cliente, infobarbank.conta_corrente;"
+cqlsh -e "SELECT * FROM infobarbank.cliente, infobarbank.conta_corrente;"
 
 ```
 
@@ -1132,7 +1127,7 @@ Então **como um sistema real resolve isso?**
 ### O sistema do banco
 
 ```sh
-cql "SELECT table_name FROM system_schema.tables WHERE keyspace_name='infobarbank';"
+cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='infobarbank';"
 
 ```
 
@@ -1158,22 +1153,22 @@ cql "SELECT table_name FROM system_schema.tables WHERE keyspace_name='infobarban
 Doze tabelas. Olhe os nomes com desconfiança: `cliente`, `cliente_por_cpf`, `cliente_por_email`, `cliente_por_telefone`. Parecem quatro tabelas diferentes. Procure a Marivalda em cada uma:
 
 ```sh
-cql "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente WHERE id_cliente='2b162060';"
+cqlsh -e "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente WHERE id_cliente='2b162060';"
 
 ```
 
 ```sh
-cql "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_cpf WHERE cpf='987.539.360-60';"
+cqlsh -e "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_cpf WHERE cpf='987.539.360-60';"
 
 ```
 
 ```sh
-cql "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_email WHERE email='marivalda@bmail.com';"
+cqlsh -e "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_email WHERE email='marivalda@bmail.com';"
 
 ```
 
 ```sh
-cql "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_telefone WHERE telefone='(11) 987654321';"
+cqlsh -e "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_telefone WHERE telefone='(11) 987654321';"
 
 ```
 
@@ -1206,7 +1201,7 @@ A terceira linha é a que custa caro, e vamos medir as duas primeiras antes de c
 Quantas linhas em cada uma das quatro tabelas?
 
 ```sh
-cql "
+cqlsh -e "
 SELECT count(*) FROM infobarbank.cliente;
 SELECT count(*) FROM infobarbank.cliente_por_cpf;
 SELECT count(*) FROM infobarbank.cliente_por_email;
@@ -1216,10 +1211,15 @@ SELECT count(*) FROM infobarbank.cliente_por_telefone;"
 
 Cinquenta em cada, com um aviso em cada — `Aggregation query used without partition key`, que é o Cassandra dizendo que para contar ele varreu a tabela inteira. Guarde o aviso: até `count(*)` é uma varredura.
 
-Agora o espaço em disco:
+Agora o espaço em disco. As keyspaces do curso foram carregadas há pouco, e parte delas pode estar ainda na memtable — sem arquivo no disco, como você viu na seção 6. Force a descida antes de medir:
 
 ```sh
-nt tablestats infobarbank.cliente infobarbank.cliente_por_cpf infobarbank.cliente_por_email infobarbank.cliente_por_telefone
+nodetool flush infobarbank
+
+```
+
+```sh
+nodetool tablestats infobarbank.cliente infobarbank.cliente_por_cpf infobarbank.cliente_por_email infobarbank.cliente_por_telefone
 
 ```
 
@@ -1227,19 +1227,19 @@ O comando imprime umas trinta linhas por tabela. Três delas interessam:
 
 ```
   Table: cliente
-  Space used (total): 10063
+  Space used (total): 10069
   Number of partitions (estimate): 50
 
   Table: cliente_por_cpf
-  Space used (total): 9760
+  Space used (total): 9766
   Number of partitions (estimate): 30
 
   Table: cliente_por_email
-  Space used (total): 10425
+  Space used (total): 10438
   Number of partitions (estimate): 50
 
   Table: cliente_por_telefone
-  Space used (total): 10257
+  Space used (total): 10260
   Number of partitions (estimate): 49
 ```
 
@@ -1248,7 +1248,7 @@ Cerca de **40 KB para armazenar 10 KB de clientes** — o fator quatro, medido. 
 Antes de seguir, olhe a linha de partições, porque ela denuncia algo que as contagens escondem. As quatro tabelas têm 50 linhas, mas `cliente_por_cpf` estima **30 partições** e `cliente_por_telefone`, **49**. Menos partições que linhas significa linhas diferentes com a mesma chave. Esse número é uma estimativa — confirme contando as chaves distintas:
 
 ```sh
-cql "SELECT DISTINCT cpf FROM infobarbank.cliente_por_cpf;"
+cqlsh -e "SELECT DISTINCT cpf FROM infobarbank.cliente_por_cpf;"
 
 ```
 
@@ -1287,7 +1287,7 @@ O segundo custo é escrever quatro vezes em vez de uma. O terceiro é o que queb
 Crie uma tabela de acesso por e-mail para a `lab.cliente`, do mesmo jeito que o banco fez:
 
 ```sh
-cql "
+cqlsh -e "
 CREATE TABLE lab.cliente_por_email (
   email text PRIMARY KEY,
   id_cliente text,
@@ -1300,14 +1300,14 @@ INSERT INTO lab.cliente_por_email (email, id_cliente, nome) VALUES ('marivalda@b
 Duas tabelas, o mesmo dado, tudo em ordem. Agora a Marivalda troca de e-mail, e a aplicação atualiza o cadastro:
 
 ```sh
-cql "UPDATE lab.cliente SET email = 'marivalda.kanamary@bmail.com' WHERE id_cliente = '2b162060';"
+cqlsh -e "UPDATE lab.cliente SET email = 'marivalda.kanamary@bmail.com' WHERE id_cliente = '2b162060';"
 
 ```
 
 Nenhum erro. Amanhã ela tenta entrar com o e-mail novo:
 
 ```sh
-cql "SELECT * FROM lab.cliente_por_email WHERE email = 'marivalda.kanamary@bmail.com';"
+cqlsh -e "SELECT * FROM lab.cliente_por_email WHERE email = 'marivalda.kanamary@bmail.com';"
 
 ```
 
@@ -1321,7 +1321,7 @@ cql "SELECT * FROM lab.cliente_por_email WHERE email = 'marivalda.kanamary@bmail
 **O login falhou.** E o e-mail antigo, que ela não usa mais, continua funcionando:
 
 ```sh
-cql "SELECT * FROM lab.cliente_por_email WHERE email = 'marivalda@bmail.com';"
+cqlsh -e "SELECT * FROM lab.cliente_por_email WHERE email = 'marivalda@bmail.com';"
 
 ```
 
@@ -1338,7 +1338,7 @@ Piora um pouco. O conserto óbvio não é permitido:
 > **Provoque este erro.**
 
 ```sh
-cql "UPDATE lab.cliente_por_email SET email = 'marivalda.kanamary@bmail.com' WHERE email = 'marivalda@bmail.com';"
+cqlsh -e "UPDATE lab.cliente_por_email SET email = 'marivalda.kanamary@bmail.com' WHERE email = 'marivalda@bmail.com';"
 
 ```
 
@@ -1349,7 +1349,7 @@ InvalidRequest: ... "PRIMARY KEY part email found in SET part"
 O e-mail é a partition key: ele **decide em que partição a linha mora**. Mudá-lo não é alterar um campo, é mudar a linha de lugar — e isso, para o Cassandra, são duas operações. Insira a nova e apague a velha:
 
 ```sh
-cql "
+cqlsh -e "
 INSERT INTO lab.cliente_por_email (email, id_cliente, nome) VALUES ('marivalda.kanamary@bmail.com','2b162060','MARIVALDA');
 DELETE FROM lab.cliente_por_email WHERE email = 'marivalda@bmail.com';
 SELECT * FROM lab.cliente_por_email;"
@@ -1365,7 +1365,7 @@ SELECT * FROM lab.cliente_por_email;"
 Some a tabela auxiliar e devolva o e-mail original — as próximas seções usam a `lab.cliente` como ela estava:
 
 ```sh
-cql "
+cqlsh -e "
 DROP TABLE lab.cliente_por_email;
 UPDATE lab.cliente SET email = 'marivalda@bmail.com' WHERE id_cliente = '2b162060';"
 
@@ -1463,7 +1463,7 @@ E o preço do método, que é honesto declarar agora: **a consulta que ninguém 
 Os lançamentos são gerados em relação à data de execução, então as competências disponíveis no seu ambiente são outras. Descubra:
 
 ```sh
-cql "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_periodo;"
+cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_periodo;"
 
 ```
 
@@ -1477,7 +1477,7 @@ cql "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_pe
 Use uma competência **do meio da lista** nos exemplos — nem a primeira, nem a última. O motivo aparece ao olhar a data do último lançamento de cada uma:
 
 ```sh
-cql "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
+cqlsh -e "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
 
 ```
 
@@ -1486,7 +1486,7 @@ cql "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cli
 ```
 
 ```sh
-cql "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-07';"
+cqlsh -e "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-07';"
 
 ```
 
@@ -1497,7 +1497,7 @@ cql "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cli
 A última competência para no dia **25** — que é hoje. Ela é o **mês corrente**, e por isso cobre um mês incompleto. A primeira da lista tem o problema simétrico:
 
 ```sh
-cql "SELECT min(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2025-07';"
+cqlsh -e "SELECT min(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2025-07';"
 
 ```
 
@@ -1531,7 +1531,7 @@ O caso mais simples, o mesmo da sua `lab.cliente`: a `PRIMARY KEY` tem uma colun
 A tabela `cliente` do banco tem exatamente essa forma:
 
 ```sh
-cql "DESCRIBE TABLE infobarbank.cliente;"
+cqlsh -e "DESCRIBE TABLE infobarbank.cliente;"
 
 ```
 
@@ -1544,7 +1544,7 @@ Repare **onde** essa declaração aparece: na própria linha da coluna. É a for
 Recupere a Marivalda:
 
 ```sh
-cql "SELECT id_cliente, nome_completo, cpf, estado FROM infobarbank.cliente WHERE id_cliente='2b162060';"
+cqlsh -e "SELECT id_cliente, nome_completo, cpf, estado FROM infobarbank.cliente WHERE id_cliente='2b162060';"
 
 ```
 
@@ -1561,7 +1561,7 @@ Esta é uma das saídas que devem coincidir **exatamente** com a sua — cliente
 A **Q7** é o detalhe de um lançamento, e usa a mesma chave de uma coluna:
 
 ```sh
-cql "DESCRIBE TABLE infobarbank.lancamentos_detalhe;"
+cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_detalhe;"
 
 ```
 
@@ -1574,7 +1574,7 @@ Mesma forma, outra tabela. Só que aqui aparece um problema que a `cliente` não
 Isso não é inconveniência do laboratório, é a própria mecânica do aplicativo. A tela de detalhe nunca é a primeira: a cliente chega nela **tocando numa linha do extrato**, e é a tela anterior que carrega o id. Então faça o que o aplicativo faz — leia o extrato primeiro:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT id_lancamento, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_periodo
 WHERE id_cliente='2b162060' AND competencia='2026-06'
@@ -1599,7 +1599,7 @@ Os seus cinco ids são outros. **Escolha qualquer um deles** e siga com ele nos 
 Agora a Q7, com o id que você escolheu:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT id_lancamento, data_hora, estabelecimento, valor, status, codigo_autenticacao
 FROM infobarbank.lancamentos_detalhe
 WHERE id_lancamento='ccf7c105';"
@@ -1623,7 +1623,7 @@ Duas leituras, duas partições, dois nós possíveis num cluster — e é assim
 Agora a `PRIMARY KEY` tem duas partes. A **Q1**, dados da conta:
 
 ```sh
-cql "DESCRIBE TABLE infobarbank.conta_corrente;"
+cqlsh -e "DESCRIBE TABLE infobarbank.conta_corrente;"
 
 ```
 
@@ -1635,7 +1635,7 @@ cql "DESCRIBE TABLE infobarbank.conta_corrente;"
 Leia a cláusula da esquerda para a direita: a **primeira** coluna é a partition key, as demais são clustering keys. Aqui é `id_cliente` que decide a partição, e o `CLUSTERING ORDER BY` que veio de brinde confirma quem são as outras duas.
 
 ```sh
-cql "
+cqlsh -e "
 SELECT id_conta, status, apelido_cliente, saldo_disponivel
 FROM infobarbank.conta_corrente
 WHERE id_cliente='2b162060';"
@@ -1651,7 +1651,7 @@ WHERE id_cliente='2b162060';"
 E a **Q2**, cartões e limites, com a mesma forma:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT status, id_cartao, num_cartao, limite_total, limite_disponivel
 FROM infobarbank.cartao_credito
 WHERE id_cliente='2b162060';"
@@ -1675,7 +1675,7 @@ E note a ordem: os dois `ATIVO` vêm antes do `INATIVO`, porque `status` é a pr
 Essa é também a forma das tabelas de acesso alternativo que você viu na seção 7:
 
 ```sh
-cql "DESCRIBE TABLE infobarbank.cliente_por_cpf;"
+cqlsh -e "DESCRIBE TABLE infobarbank.cliente_por_cpf;"
 
 ```
 
@@ -1688,7 +1688,7 @@ Por que `id_cliente` como clustering key, se um CPF identifica uma pessoa? Por s
 E não é hipótese. É exatamente o que você mediu na seção 7: **30 partições para 50 clientes.** Se a chave fosse apenas `cpf`, aqueles trinta clientes que dividem dez CPFs teriam virado dez linhas, e vinte pessoas simplesmente não existiriam nesta tabela — sem erro, sem aviso. A clustering key é o que impede isso. Comprove:
 
 ```sh
-cql "SELECT cpf, id_cliente, nome_completo FROM infobarbank.cliente_por_cpf WHERE cpf='892.394.120-12';"
+cqlsh -e "SELECT cpf, id_cliente, nome_completo FROM infobarbank.cliente_por_cpf WHERE cpf='892.394.120-12';"
 
 ```
 
@@ -1712,7 +1712,7 @@ Quatro pessoas, uma partição, quatro linhas ordenadas por `id_cliente`. A tela
 A **Q4**, extrato por período, é onde o modelo fica interessante:
 
 ```sh
-cql "DESCRIBE TABLE infobarbank.lancamentos_por_periodo;"
+cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_por_periodo;"
 
 ```
 
@@ -1724,7 +1724,7 @@ cql "DESCRIBE TABLE infobarbank.lancamentos_por_periodo;"
 A partition key agora tem **duas** colunas: `id_cliente` **e** `competencia`. O hash é calculado sobre o par.
 
 ```sh
-cql "
+cqlsh -e "
 SELECT data_hora, id_produto, tipo_operacao, estabelecimento, valor
 FROM infobarbank.lancamentos_por_periodo
 WHERE id_cliente='2b162060' AND competencia='2026-06'
@@ -1765,7 +1765,7 @@ Acrescentar a competência à partition key quebra esse histórico em uma parti�
 Vamos construir a versão sem bucket e comparar. Primeiro a tabela:
 
 ```sh
-cql "
+cqlsh -e "
 CREATE TABLE lab.lancamento_sem_bucket (
     id_cliente      text,
     data_hora       timestamp,
@@ -1791,12 +1791,7 @@ LC_ALL=C awk 'BEGIN{
 ```
 
 ```sh
-docker cp lancamentos.csv cassandra-database:/tmp/
-
-```
-
-```sh
-cql "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, estabelecimento, valor) FROM '/tmp/lancamentos.csv' WITH HEADER=TRUE;"
+cqlsh -e "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, estabelecimento, valor) FROM 'lancamentos.csv' WITH HEADER=TRUE;"
 
 ```
 
@@ -1806,15 +1801,36 @@ cql "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, estab
 
 > Duas coisas sobre esse `awk`. A coluna `data_hora` é gerada como **epoch em milissegundos** (`1451606400000` é 1º de janeiro de 2016), formato que o `COPY` aceita para colunas `timestamp` — assim não dependemos de nenhuma extensão de `awk` para formatar datas. E o `LC_ALL=C` não é enfeite: em locale brasileiro, `%.2f` imprime `395,46` com vírgula, o que quebraria o CSV em uma coluna a mais.
 
-Force a descida para o disco e compare as duas tabelas:
+Force a descida para o disco:
 
 ```sh
-cass nodetool flush lab lancamento_sem_bucket
+nodetool flush lab lancamento_sem_bucket
 
 ```
 
+E veja quantas SSTables a tabela tem:
+
 ```sh
-cass nodetool tablestats lab.lancamento_sem_bucket
+ls -1 /var/lib/cassandra/data/lab/lancamento_sem_bucket-*/*-Data.db
+
+```
+
+```
+.../nb-1-big-Data.db
+.../nb-2-big-Data.db
+```
+
+Duas, e você só pediu um flush. A outra o Cassandra fez sozinho, no meio do `COPY`: 200 mil linhas não couberam no espaço reservado às memtables, e ele descarregou a maior delas para liberar memória. É o ciclo da seção 6 acontecendo sem ninguém pedir — e agora a mesma partição está em dois arquivos. Para medi-la inteira, junte os dois:
+
+```sh
+nodetool compact lab lancamento_sem_bucket
+
+```
+
+Agora compare as duas tabelas:
+
+```sh
+nodetool tablestats lab.lancamento_sem_bucket
 
 ```
 
@@ -1825,7 +1841,7 @@ cass nodetool tablestats lab.lancamento_sem_bucket
 ```
 
 ```sh
-cass nodetool tablestats infobarbank.lancamentos_por_periodo
+nodetool tablestats infobarbank.lancamentos_por_periodo
 
 ```
 
@@ -1847,7 +1863,7 @@ Uma partição de **10 MB**, contra 2,7 KB. E isso com 200 mil linhas de **uma**
 Aqui está a parte que costuma surpreender. Uma leitura pontual dentro da partição gigante continua rápida:
 
 ```sh
-cql "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-06-01' AND data_hora < '2020-06-08';"
+cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-06-01' AND data_hora < '2020-06-08';"
 
 ```
 
@@ -1858,7 +1874,7 @@ cql "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' 
 Responde em meio segundo. O índice da partição mais as clustering keys levam direto ao trecho pedido, e o tamanho da partição quase não pesa. Já atravessar a partição inteira custa:
 
 ```sh
-cql "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060';"
+cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060';"
 
 ```
 
@@ -1869,7 +1885,7 @@ cql "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060';
 Três vezes mais lento — e com 200 mil linhas isso ainda é tolerável. Agora que houve leituras, o `tablehistograms` mostra a distribuição das duas tabelas lado a lado:
 
 ```sh
-cass nodetool tablehistograms lab lancamento_sem_bucket
+nodetool tablehistograms lab lancamento_sem_bucket
 
 ```
 
@@ -1881,7 +1897,7 @@ Percentile      Read Latency     Write Latency          SSTables    Partition Si
 ```
 
 ```sh
-cass nodetool tablehistograms infobarbank lancamentos_por_periodo
+nodetool tablehistograms infobarbank lancamentos_por_periodo
 
 ```
 
@@ -1905,7 +1921,7 @@ O bucket não é grátis, e o custo é na consulta. Com a competência na partit
 > **Provoque este erro.**
 
 ```sh
-cql "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia >= '2026-04';"
+cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia >= '2026-04';"
 
 ```
 
@@ -1916,7 +1932,7 @@ InvalidRequest: ... "Cannot execute this query as it might involve data filterin
 Faz sentido, pelo que você viu na seção 5: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre abril e junho". A saída é listar os buckets desejados:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
 WHERE id_cliente='2b162060' AND competencia IN ('2026-04','2026-05','2026-06')
@@ -1935,7 +1951,7 @@ GROUP BY competencia;"
 E para um período que atravessa buckets, combina-se `IN` no bucket com o intervalo na clustering key:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
 WHERE id_cliente='2b162060' AND competencia IN ('2026-05','2026-06')
@@ -1954,7 +1970,7 @@ GROUP BY competencia;"
 Compare com a tabela sem bucket, onde o mesmo período é um intervalo só, sem que a aplicação precise saber de meses:
 
 ```sh
-cql "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-05-20' AND data_hora < '2020-06-10';"
+cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-05-20' AND data_hora < '2020-06-10';"
 
 ```
 
@@ -2012,7 +2028,7 @@ O bucket resolve o tamanho da partição, mas cobra um preço na consulta: **que
 Sem bucket, quem limita o tamanho é a cardinalidade natural do par: um cliente não compra a mesma geladeira dez mil vezes. Confira:
 
 ```sh
-cql "SELECT count(*) FROM ecommerce.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
+cqlsh -e "SELECT count(*) FROM ecommerce.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
 
 ```
 
@@ -2021,7 +2037,7 @@ Vinte e poucas linhas em doze competências — mesma ordem de grandeza das part
 Terminada a comparação, libere os 10 MB:
 
 ```sh
-cql "DROP TABLE lab.lancamento_sem_bucket;"
+cqlsh -e "DROP TABLE lab.lancamento_sem_bucket;"
 
 ```
 
@@ -2041,7 +2057,7 @@ Q3, Q5 e Q6 pedem os mesmos lançamentos da mesma cliente no mesmo mês. Só a f
 Q3 — últimos aprovados:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT status, data_hora, id_produto, estabelecimento, valor
 FROM infobarbank.lancamentos_por_status
 WHERE id_cliente='2b162060' AND competencia='2026-06' AND status='APROVADA'
@@ -2062,7 +2078,7 @@ LIMIT 5;"
 Q5 — lançamentos de um cartão específico:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT id_produto, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_produto
 WHERE id_cliente='2b162060' AND competencia='2026-06' AND id_produto='897199aa';"
@@ -2084,7 +2100,7 @@ WHERE id_cliente='2b162060' AND competencia='2026-06' AND id_produto='897199aa';
 Q6 — por tipo de operação:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT tipo_operacao, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_tipo
 WHERE id_cliente='2b162060' AND competencia='2026-06' AND tipo_operacao='DEBITO'
@@ -2112,7 +2128,7 @@ Quatro tentativas que o Cassandra recusa. Cada mensagem diz algo diferente sobre
 > **Provoque este erro.**
 
 ```sh
-cql "SELECT * FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060';"
+cqlsh -e "SELECT * FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060';"
 
 ```
 
@@ -2128,7 +2144,7 @@ O hash é calculado sobre o par completo. Com metade da chave, o Cassandra não 
 > **Provoque este erro.**
 
 ```sh
-cql "SELECT * FROM infobarbank.lancamentos_por_status WHERE status='APROVADA';"
+cqlsh -e "SELECT * FROM infobarbank.lancamentos_por_status WHERE status='APROVADA';"
 
 ```
 
@@ -2143,7 +2159,7 @@ Mesma mensagem, outra causa. `status` ordena as linhas *dentro* da partição; s
 > **Provoque este erro.**
 
 ```sh
-cql "
+cqlsh -e "
 SELECT * FROM infobarbank.lancamentos_por_produto
 WHERE id_cliente='2b162060' AND competencia='2026-06' AND data_hora>='2026-06-01';"
 
@@ -2161,7 +2177,7 @@ Esta é a mensagem mais informativa das quatro, e vale decorar o princípio: as 
 > **Provoque este erro.**
 
 ```sh
-cql "
+cqlsh -e "
 SELECT * FROM infobarbank.lancamentos_por_periodo
 WHERE id_cliente='2b162060' AND competencia='2026-06'
 ORDER BY valor DESC;"
@@ -2182,7 +2198,7 @@ O erro sugere `ALLOW FILTERING` desde a seção 4. Vamos ver o que ele custa, co
 Primeiro a consulta correta, com a partition key completa:
 
 ```sh
-cql "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
+cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
 
 ```
 
@@ -2196,7 +2212,7 @@ Read 26 live rows and 0 tombstone cells
 **Uma partição, 26 linhas lidas.** Agora a mesma pergunta, sem informar a cliente, forçando o filtro:
 
 ```sh
-cql "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE competencia='2026-06' ALLOW FILTERING;"
+cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE competencia='2026-06' ALLOW FILTERING;"
 
 ```
 
@@ -2236,7 +2252,7 @@ Volte à consulta que falhou na seção 4:
 > **Provoque este erro.**
 
 ```sh
-cql "SELECT nome, sobrenome FROM lab.cliente WHERE nome='MARIVALDA';"
+cqlsh -e "SELECT nome, sobrenome FROM lab.cliente WHERE nome='MARIVALDA';"
 
 ```
 
@@ -2247,14 +2263,14 @@ InvalidRequest: ... "Cannot execute this query as it might involve data filterin
 Agora crie um índice sobre `nome`:
 
 ```sh
-cql "CREATE INDEX cliente_nome_sai ON lab.cliente(nome) USING 'sai';"
+cqlsh -e "CREATE INDEX cliente_nome_sai ON lab.cliente(nome) USING 'sai';"
 
 ```
 
 E repita a consulta:
 
 ```sh
-cql "SELECT id_cliente, nome, sobrenome FROM lab.cliente WHERE nome='MARIVALDA';"
+cqlsh -e "SELECT id_cliente, nome, sobrenome FROM lab.cliente WHERE nome='MARIVALDA';"
 
 ```
 
@@ -2271,14 +2287,13 @@ Funciona. O `USING 'sai'` seleciona o **Storage Attached Index**, que na versão
 O nome não é decorativo: o índice está *anexado ao armazenamento*. Veja o que apareceu no diretório da tabela:
 
 ```sh
-cass sh -c "ls -1 $DIR | grep SAI"
+ls -1 $DIR | grep SAI
 
 ```
 
-> Se o comando não devolver nada, é porque `$DIR` e o atalho `cass` foram definidos na seção 6 e você está em outro terminal. Redefina:
+> Se o comando não devolver nada, é porque `$DIR` foi definida na seção 6 e você está em outro terminal. Redefina:
 > ```sh
-> alias cass='docker exec -it cassandra-database'
-> DIR=$(docker exec cassandra-database sh -c 'ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1')
+> DIR=$(ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1)
 > ```
 
 ```
@@ -2302,7 +2317,7 @@ Onze componentes novos, com o prefixo da SSTable que você já conhece. Os quatr
 Ligue o `TRACING` e leia com cuidado:
 
 ```sh
-cql "TRACING ON; SELECT id_cliente, nome FROM lab.cliente WHERE nome='MARIVALDA';"
+cqlsh -e "TRACING ON; SELECT id_cliente, nome FROM lab.cliente WHERE nome='MARIVALDA';"
 
 ```
 
@@ -2336,7 +2351,7 @@ Ou seja: o SAI não substitui a modelagem orientada a consultas, ele **cobre o q
 Remova o índice antes de seguir:
 
 ```sh
-cql "DROP INDEX lab.cliente_nome_sai;"
+cqlsh -e "DROP INDEX lab.cliente_nome_sai;"
 
 ```
 
@@ -2345,7 +2360,7 @@ cql "DROP INDEX lab.cliente_nome_sai;"
 Na seção 6 você viu três SSTables virarem uma. A estratégia que decidiu isso apareceu no `DESCRIBE TABLE`:
 
 ```sh
-cql "SELECT compaction FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
+cqlsh -e "SELECT compaction FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
 
 ```
 
@@ -2358,12 +2373,12 @@ Historicamente era preciso escolher entre estratégias com comportamentos bem di
 A versão 5 trouxe a **Unified Compaction Strategy**, que unifica as duas primeiras em um único algoritmo com um parâmetro:
 
 ```sh
-cql "ALTER TABLE lab.cliente WITH compaction = {'class':'UnifiedCompactionStrategy'};"
+cqlsh -e "ALTER TABLE lab.cliente WITH compaction = {'class':'UnifiedCompactionStrategy'};"
 
 ```
 
 ```sh
-cql "SELECT compaction FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
+cqlsh -e "SELECT compaction FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
 
 ```
 
@@ -2380,7 +2395,7 @@ O parâmetro é o `scaling_parameters`:
 | `N` | o meio do caminho |
 
 ```sh
-cql "ALTER TABLE lab.cliente WITH compaction = {'class':'UnifiedCompactionStrategy','scaling_parameters':'T4'};"
+cqlsh -e "ALTER TABLE lab.cliente WITH compaction = {'class':'UnifiedCompactionStrategy','scaling_parameters':'T4'};"
 
 ```
 
@@ -2391,7 +2406,7 @@ Também é possível declarar valores diferentes por nível, o que permite ser e
 Devolva a tabela à estratégia padrão:
 
 ```sh
-cql "ALTER TABLE lab.cliente WITH compaction = {'class':'SizeTieredCompactionStrategy'};"
+cqlsh -e "ALTER TABLE lab.cliente WITH compaction = {'class':'SizeTieredCompactionStrategy'};"
 
 ```
 
@@ -2403,26 +2418,11 @@ O fluxo Q1 a Q7 é a sequência de telas de um aplicativo. Até aqui você o exe
 
 ### Preparando o ambiente
 
-O driver roda **no host**, não dentro do container: a imagem do Cassandra tem `python3` mas não tem `pip`. E é assim que se parece com a realidade — a aplicação nunca mora no mesmo host do banco.
+O driver oficial do Cassandra para Python, o `cassandra-driver`, já está instalado no ambiente — é o mesmo driver que o `cqlsh` usa por baixo. Não há `venv` nem `pip install` a fazer.
 
-```sh
-python3 -m venv venv
+Uma diferença em relação à realidade: aqui a aplicação roda no mesmo container que o banco, por conveniência de laboratório. Em produção ela nunca mora no mesmo host do banco — e nada no código abaixo mudaria, a não ser o endereço.
 
-```
-
-```sh
-. venv/bin/activate
-
-```
-
-```sh
-pip install cassandra-driver
-
-```
-
-> O `venv` vale **só neste terminal**, como os `alias` da seção 1. Se você abrir outro terminal para rodar o `driver_demo.py`, precisa ativá-lo de novo — o `pip install` não se repete, a ativação sim. Quando ele está ativo, o prompt começa com `(venv)`.
-
-A conexão vai para `127.0.0.1:9042`, a porta que o `compose.yaml` publica no host:
+A conexão vai para `127.0.0.1:9042`, a porta em que o nó atende:
 
 ```sh
 python3 -c "
@@ -2435,7 +2435,7 @@ cluster.shutdown()"
 ```
 
 ```
-conectado, versão: 5.0.8
+conectado, versão: 5.0.9
 ```
 
 ### O fluxo aplicacional
@@ -2443,7 +2443,7 @@ conectado, versão: 5.0.8
 Baixe a aplicação:
 
 ```sh
-wget https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/driver_demo.py
+curl -sSO https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo/main/driver_demo.py
 
 ```
 
@@ -2657,13 +2657,6 @@ Esse padrão é o que torna viável o modelo da Parte II. Uma tela que precisa d
 - A diferença entre paginar uma partição grande e paginar uma varredura.
 - Por que cinco leituras pontuais em paralelo podem ganhar de um `JOIN`.
 
-Quando terminar, saia do ambiente virtual:
-
-```sh
-deactivate
-
-```
-
 **→ Parte IV.** Você percorreu um modelo completo, das perguntas às tabelas, e o executou de dentro de uma aplicação. Agora é a sua vez — em outra empresa.
 
 ## 11. Enunciado
@@ -2679,12 +2672,12 @@ A cliente é a mesma pessoa. No banco ela é `2b162060`; na loja, **`CLI-000001`
 ### Explorando
 
 ```sh
-cql "DESCRIBE KEYSPACE ecommerce;"
+cqlsh -e "DESCRIBE KEYSPACE ecommerce;"
 
 ```
 
 ```sh
-cql "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecommerce';"
+cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecommerce';"
 
 ```
 
@@ -2707,7 +2700,7 @@ cql "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecommerce'
 Descubra as competências disponíveis — aqui também os dados são relativos à data de execução:
 
 ```sh
-cql "SELECT DISTINCT id_cliente, competencia FROM ecommerce.pedidos_por_periodo;"
+cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM ecommerce.pedidos_por_periodo;"
 
 ```
 
@@ -2769,7 +2762,7 @@ A ideia: representar cada item por uma lista de números — um **embedding** �
 Vamos montar um exemplo minúsculo e explícito, com três dimensões inventadas: **portabilidade**, **uso pessoal** e **cozinha**.
 
 ```sh
-cql "
+cqlsh -e "
 CREATE TABLE lab.produto_similar (
     produto         text PRIMARY KEY,
     categoria       text,
@@ -2781,7 +2774,7 @@ CREATE TABLE lab.produto_similar (
 O índice é SAI, o mesmo da seção 9:
 
 ```sh
-cql "CREATE INDEX ON lab.produto_similar(caracteristicas) USING 'sai';"
+cqlsh -e "CREATE INDEX ON lab.produto_similar(caracteristicas) USING 'sai';"
 
 ```
 
@@ -2801,7 +2794,7 @@ They don't yet support SELECT queries with:
 Leia esse aviso: na 5.0 a busca vetorial é **experimental**, e a lista de restrições é concreta. Duas delas valem destacar — consulta vetorial exige `LIMIT` (a terceira linha diz que consultas *sem* `LIMIT` não são suportadas) e não funciona com consistency level acima de `LOCAL_ONE`, o que a torna inadequada a caso de uso que exija leitura forte. Não é erro: é o Cassandra dizendo em que estágio o recurso está.
 
 ```sh
-cql "
+cqlsh -e "
 INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('NOTEBOOK',       'informatica',  [0.9, 0.9, 0.0]);
 INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('TABLET',         'informatica',  [1.0, 0.8, 0.0]);
 INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('COMPUTADOR',     'informatica',  [0.1, 0.9, 0.0]);
@@ -2814,7 +2807,7 @@ INSERT INTO lab.produto_similar(produto, categoria, caracteristicas) VALUES ('LI
 Agora a consulta nova. `ANN` é *Approximate Nearest Neighbor* — "os vizinhos mais próximos", aproximadamente:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT produto, categoria, similarity_cosine(caracteristicas, [0.9, 0.9, 0.0]) AS similaridade
 FROM lab.produto_similar
 ORDER BY caracteristicas ANN OF [0.9, 0.9, 0.0]
@@ -2836,7 +2829,7 @@ LIMIT 4;"
 Perguntamos "o que é parecido com um notebook?" sem nenhum `WHERE`, e sem que o banco soubesse o que é um notebook. Os dois eletrodomésticos de cozinha nem apareceram entre os quatro primeiros. Faça a pergunta do outro lado do espaço:
 
 ```sh
-cql "
+cqlsh -e "
 SELECT produto, categoria, similarity_cosine(caracteristicas, [0.0, 0.1, 1.0]) AS similaridade
 FROM lab.produto_similar
 ORDER BY caracteristicas ANN OF [0.0, 0.1, 1.0]
@@ -2859,7 +2852,7 @@ LIMIT 3;"
 > **Provoque este erro.**
 
 ```sh
-cql "SELECT produto FROM lab.produto_similar ORDER BY caracteristicas ANN OF [0.9, 0.9] LIMIT 1;"
+cqlsh -e "SELECT produto FROM lab.produto_similar ORDER BY caracteristicas ANN OF [0.9, 0.9] LIMIT 1;"
 
 ```
 
@@ -2882,18 +2875,15 @@ E vale repetir o aviso do próprio Cassandra: na 5.0 isso é experimental. Serve
 Limpando:
 
 ```sh
-cql "DROP TABLE lab.produto_similar;"
+cqlsh -e "DROP TABLE lab.produto_similar;"
 
 ```
 
 ## B. Encerrando o ambiente
 
-```sh
-docker compose down -v
+Ao fim de cada aula, pare a instância: no Console AWS (`us-east-1`), **EC2** > **Instances**, selecione **`lab-cassandra-widecolumn`** e clique em **Instance state** > **Stop instance**. Os dados são preservados, e na próxima aula basta seguir [Retomando o laboratório](#retomando-o-laboratório).
 
-```
-
-O `-v` remove também o volume de dados. Como as duas keyspaces são recriadas em cerca de 30 segundos no próximo `up`, não há motivo para preservá-las.
+Quando o laboratório tiver terminado de vez, use **Instance state** > **Terminate instance**. Isso apaga a instância e o disco; não há o que preservar.
 
 ### Para onde ir depois
 
@@ -2906,109 +2896,55 @@ Cluster de verdade — vários nós, `nodetool repair`, consistency level sob fa
 Antes de qualquer coisa, rode a verificação — ela costuma responder sozinha:
 
 ```sh
-curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/scripts/check.sh | bash
+curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo/main/scripts/check.sh | bash
 
 ```
 
-### `cql: command not found`
+### A página `http://<IP-PUBLICO>:8080` não abre
 
-Os `alias` valem só no terminal em que foram definidos. Abriu outro, ou fechou e reabriu? Defina de novo:
+Logo após o `launch-lab.sh`, a instância ainda está instalando o Docker e baixando a imagem: aguarde de 3 a 5 minutos e atualize o navegador. Depois de religar a instância, confira se está usando o **novo** IP público — ele muda a cada reinício.
+
+### `Connection refused` ou `Unable to connect to any servers`
+
+O Cassandra ainda está subindo — a IDE fica pronta antes dele. Espere alguns segundos e repita. Para acompanhar:
 
 ```sh
-alias cql='docker exec -it cassandra-database cqlsh -e'
-alias nt='docker exec -it cassandra-database nodetool'
-alias cass='docker exec -it cassandra-database'
+tail -f /var/log/lab/cassandra.log
 
 ```
 
-O mesmo vale para a variável `$DIR` da seção 6 e para o `venv` da seção 10 — tudo o que você define num terminal morre com ele.
-
-### `Error response from daemon: No such container: cassandra-database`
-
-O ambiente não está no ar. No diretório onde você baixou o `compose.yaml`:
-
-```sh
-docker compose up -d
-
-```
+Quando aparecer `Startup complete`, o nó está pronto. Para sair do `tail -f`, digite `Control+C`.
 
 ### `Server is not initialized yet, cannot run nodetool`
 
-O Cassandra ainda está subindo. Espere e repita. Para acompanhar:
+O mesmo caso acima, visto pelo `nodetool`. Espere e repita.
+
+### `$DIR` vazia, ou `ls: cannot access '/*-Data.db'`
+
+A variável `$DIR` da seção 6 vale só no terminal em que foi definida. Abriu outro, ou fechou e reabriu? Defina de novo:
 
 ```sh
-docker logs -f cassandra-database
+DIR=$(ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1)
 
 ```
-
-### `ModuleNotFoundError: No module named 'cassandra'`
-
-Duas causas, e vale testar nesta ordem porque a segunda é a que costuma enganar.
-
-**1. O `venv` não está ativo neste terminal.** É o caso mais comum: você instalou o driver, abriu outro terminal para rodar o script, e ali o `venv` não existe. Descubra qual Python está sendo usado:
-
-```sh
-which python3
-
-```
-
-Se a resposta **não** terminar em `venv/bin/python3`, é isso. Ative, no diretório onde você criou o `venv`:
-
-```sh
-. venv/bin/activate
-
-```
-
-**2. O driver não foi instalado.** Aí é o `pip install` da seção 10:
-
-```sh
-pip install cassandra-driver
-
-```
-
-> Se esse comando responder `Requirement already satisfied` e mesmo assim o erro continuar, **volte para a causa 1**: você instalou em um ambiente e está executando em outro. É a única combinação que produz esses dois sintomas juntos, e é onde as pessoas ficam presas reinstalando.
-
-### `NoHostAvailable` ao conectar pelo driver
-
-O driver roda no host e precisa da porta 9042 publicada. Confira:
-
-```sh
-docker port cassandra-database
-
-```
-
-```
-9042/tcp -> 0.0.0.0:9042
-```
-
-Se não aparecer nada, seu `compose.yaml` é a versão antiga, sem a seção `ports`. Baixe de novo.
 
 ### `keyspace ecommerce does not exist` (ou `infobarbank`)
 
-Os containers de carga falharam ou ainda estão rodando. Veja o que dizem:
+A carga do primeiro boot ainda não terminou, ou falhou. Veja o que ela diz:
 
 ```sh
-docker compose logs cassandra-init-infobarbank cassandra-init-ecommerce
+cat /var/log/lab/carga.log
 
 ```
 
-Se um deles terminou com erro, rode de novo apenas ele:
+Se terminou com erro, rode a carga de novo:
 
 ```sh
-docker compose up cassandra-init-ecommerce
+carregar-keyspaces
 
 ```
 
-### `Address already in use` ao subir o ambiente
-
-Outro processo já ocupa a 9042 — provavelmente um Cassandra de outro laboratório. Encontre:
-
-```sh
-docker ps --filter publish=9042
-
-```
-
-E pare o container que aparecer, ou remova a seção `ports` do `compose.yaml` (você perde a Parte III).
+Ela recria `infobarbank` e `ecommerce` do zero e não toca na sua keyspace `lab`.
 
 ### Os resultados não batem com o texto
 
@@ -3016,23 +2952,71 @@ Confira nesta ordem:
 
 1. **Competência.** Os lançamentos e pedidos são gerados em relação à data em que você criou o ambiente. Use `SELECT DISTINCT` para descobrir as suas, e prefira uma competência fechada — a mais recente é o mês corrente.
 2. **Cliente.** No `infobarbank`, sete das cinquenta clientes têm conta, cartões e lançamentos: `2b162060`, `2b16242a`, `2b16256a`, `2b16353c`, `2b1636ae`, `2b16396a`, `2b163bcc`.
-3. **Valores que sempre variam.** `Host ID`, endereço IP, `Load`, UUID do diretório da tabela, timestamps, e o tamanho do `Data.db` em um ou dois bytes.
+3. **Valores que sempre variam.** `Host ID`, `Load`, UUID do diretório da tabela, timestamps, e o tamanho do `Data.db` em um ou dois bytes.
 4. **Numeração das SSTables.** Se você fez um flush a mais, seus arquivos não serão `nb-1` a `nb-4`. Use os nomes que o `ls` mostrar.
 
 ### Recomeçar do zero
 
+Apague a sua keyspace e recarregue as do curso:
+
 ```sh
-docker compose down -v
+cqlsh -e "DROP KEYSPACE IF EXISTS lab;"
 
 ```
 
 ```sh
-docker compose up -d
+carregar-keyspaces
 
 ```
 
-Leva pouco mais de um minuto e não deixa resíduo. Não hesite: nada neste laboratório merece ser preservado.
+Leva cerca de um minuto. Não hesite: nada neste laboratório merece ser preservado.
 
 ### O tamanho da tabela em disco não diminui depois do `DELETE`
 
 Não é problema — é a seção 6. Veja `gc_grace_seconds`.
+
+## D. Execução local
+
+Fora do horário de aula, é possível executar o mesmo ambiente em qualquer máquina com Docker. A imagem é publicada para `linux/amd64` e `linux/arm64` (inclusive Macs com Apple Silicon), e precisa de cerca de **2 GB de RAM** livres.
+
+Faça o clone deste repositório e inicialize o container com o `compose.yaml` disponível na raiz do projeto:
+
+```sh
+git clone https://github.com/infobarbosa/cassandra-widecolumn-demo.git
+cd cassandra-widecolumn-demo
+docker compose up -d
+
+```
+
+Ou, sem clonar o repositório:
+
+```sh
+docker run -d --name cassandra-lab -p 8080:8080 --stop-timeout 60 ghcr.io/infobarbosa/cassandra-lab-docker-image:latest
+
+```
+
+Acesse `http://localhost:8080` no navegador e siga o tutorial a partir do [Passo 3](#passo-3-acessar-a-ide).
+
+> O `--stop-timeout 60` dá ao Cassandra tempo de descarregar as memtables em disco quando o container é parado. Sem ele, o Docker encerra o processo depois de dez segundos.
+
+Para parar e retomar depois, preservando os dados:
+
+```sh
+docker stop cassandra-lab
+docker start cassandra-lab
+
+```
+
+Para encerrar e remover o container (os dados serão descartados):
+
+```sh
+docker compose down
+
+```
+
+ou
+
+```sh
+docker rm -f cassandra-lab
+
+```
