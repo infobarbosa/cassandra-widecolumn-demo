@@ -10,9 +10,9 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 | Arquivo | Seção |
 |---|---|
 | `01-arquitetura-infobarbank` | 1 |
-| `02-coordenador-replicas` | 2 |
+| `02-coordinator-replicas` | 2 |
 | `03-multi-datacenter` | 2 |
-| `04-anel-token` | 4 |
+| `04-ring-token` | 4 |
 | `05-colunar-vs-widecolumn` | 5 |
 | `06-caminho-de-escrita` | 5 |
 | `07-compactacao` | 5 |
