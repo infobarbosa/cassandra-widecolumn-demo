@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 #
-# Verifica se o ambiente do laboratório está íntegro.
+# Verifica se o ambiente do laboratório está íntegro. Roda no terminal do
+# code-server:
 #
-#   bash scripts/check.sh
-#
-# Ou, sem clonar o repositório:
-#
-#   curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra5-demo/main/scripts/check.sh | bash
+#   curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo/main/scripts/check.sh | bash
 #
 # Use este script sempre que uma seção do laboratório não se comportar como o
 # texto descreve: ele diz o que está faltando em vez de deixar você adivinhar.
 #
 set -uo pipefail
 
-CONTAINER="${CASSANDRA_CONTAINER:-cassandra-database}"
 FALHAS=0
 
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$1"; }
@@ -21,45 +17,44 @@ falha() { printf '  \033[31m✗\033[0m %s\n' "$1"; FALHAS=$((FALHAS + 1)); }
 aviso() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 titulo(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
 
-cql() { docker exec "$CONTAINER" cqlsh -e "$1" 2>/dev/null; }
+cql() { cqlsh -e "$1" 2>/dev/null; }
 
 # Extrai o valor de um SELECT de uma linha e uma coluna.
 valor() { cql "$1" | sed -n '4p' | tr -d ' '; }
 
-titulo "Docker"
-if ! command -v docker >/dev/null 2>&1; then
-    falha "docker não encontrado no PATH"
-    echo; echo "Instale o Docker antes de seguir."; exit 1
+titulo "Ferramentas"
+for ferramenta in cqlsh nodetool sstabledump; do
+    if command -v "$ferramenta" >/dev/null 2>&1; then
+        ok "$ferramenta"
+    else
+        falha "$ferramenta não encontrado no PATH"
+    fi
+done
+if ! command -v cqlsh >/dev/null 2>&1; then
+    echo; echo "Este script roda no terminal do code-server, não no CloudShell nem no seu computador."
+    exit 1
 fi
-ok "docker $(docker --version | sed 's/Docker version //;s/,.*//')"
-
-if ! docker compose version >/dev/null 2>&1; then
-    falha "docker compose (v2) não disponível"
+if python3 -c 'import cassandra' 2>/dev/null; then
+    ok "driver Python $(python3 -c 'import cassandra; print(cassandra.__version__)')"
 else
-    ok "docker compose $(docker compose version --short)"
+    falha "driver Python (cassandra-driver) ausente — necessário na Parte III"
 fi
 
-titulo "Container"
-ESTADO=$(docker inspect -f '{{.State.Status}}' "$CONTAINER" 2>/dev/null || echo ausente)
-case "$ESTADO" in
-    running) ok "$CONTAINER está em execução" ;;
-    ausente)
-        falha "$CONTAINER não existe"
-        echo; echo "Suba o ambiente com:  docker compose up -d"; exit 1 ;;
-    *)
-        falha "$CONTAINER está '$ESTADO'"
-        echo; echo "Suba o ambiente com:  docker compose up -d"; exit 1 ;;
-esac
-
-SAUDE=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}sem healthcheck{{end}}' "$CONTAINER" 2>/dev/null)
-[ "$SAUDE" = "healthy" ] && ok "healthcheck: healthy" || aviso "healthcheck: $SAUDE (a inicialização leva 1 a 2 minutos)"
+titulo "Carga das keyspaces"
+if grep -q 'FALHOU' /var/log/lab/carga.log 2>/dev/null; then
+    falha "a carga das keyspaces falhou (veja /var/log/lab/carga.log)"
+elif [ -f /var/lib/cassandra/.keyspaces-carregadas ] || grep -q '^Keyspaces prontas' /var/log/lab/carga.log 2>/dev/null; then
+    ok "carga do primeiro boot concluída"
+else
+    aviso "carga em andamento — acompanhe com: cat /var/log/lab/carga.log"
+fi
 
 titulo "Cassandra"
 VERSAO=$(valor "SELECT release_version FROM system.local;")
 if [ -z "$VERSAO" ]; then
     falha "o nó não respondeu ao cqlsh"
-    echo; echo "Aguarde a inicialização e rode de novo. Para acompanhar:"
-    echo "  docker logs -f $CONTAINER"; exit 1
+    echo; echo "Aguarde a inicialização (cerca de 30 segundos) e rode de novo. Para acompanhar:"
+    echo "  tail -f /var/log/lab/cassandra.log"; exit 1
 fi
 case "$VERSAO" in
     5.*) ok "versão $VERSAO" ;;
@@ -126,10 +121,10 @@ fi
 printf '  \033[31m%d verificação(ões) falharam.\033[0m\n' "$FALHAS"
 cat <<'FIM'
 
-  Para recriar o ambiente do zero:
+  Se a carga ainda estiver em andamento, espere e rode de novo. Para
+  recarregar as keyspaces do curso (a sua keyspace lab não é tocada):
 
-    docker compose down -v
-    docker compose up -d
+    carregar-keyspaces
 
 FIM
 exit 1
