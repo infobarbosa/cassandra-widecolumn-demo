@@ -87,13 +87,13 @@ verifica_keyspace() {
 }
 
 verifica_keyspace infobarbank 12 "modelagem de dados"
-verifica_keyspace ecommerce    9 "trabalho final"
+verifica_keyspace ecommerce    9 "desafio"
 
 LAB=$(valor "SELECT count(*) FROM system_schema.tables WHERE keyspace_name='lab';")
 if [ -n "$LAB" ] && [ "$LAB" != "0" ]; then
     ok "lab: $LAB tabelas (sua bancada de trabalho)"
 else
-    aviso "lab: ainda não criada — você a cria na Parte I"
+    aviso "lab: ainda não criada — você a cria na Parte 1"
 fi
 
 titulo "Dados"
