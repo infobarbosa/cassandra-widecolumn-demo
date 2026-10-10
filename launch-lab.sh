@@ -7,9 +7,9 @@
 
 set -euo pipefail
 
-# Tag da imagem do laboratório. Durante a migração, aponta para a branch de teste
-# da imagem; ao fazer o merge na main, trocar para "latest".
-IMAGE_TAG="versao-inicial"
+# Tag da imagem do laboratório. Para testar uma branch da imagem, troque pelo
+# nome da branch (o CI publica uma tag com esse nome).
+IMAGE_TAG="latest"
 
 # Desabilitar o pager padrao da AWS CLI (evita que comandos travem no less/END)
 export AWS_PAGER=""
