@@ -301,6 +301,7 @@ O desenho do infobarBank é um padrão de integração comum, mas não o único:
 ### 1.f. O que existe no nó
 
 ```sh
+# 1.f.1
 cqlsh -e "DESCRIBE KEYSPACES;"
 
 ```
@@ -338,6 +339,7 @@ O nó que recebe a requisição vira o **coordinator** daquela operação. Ele c
 O seu ambiente tem um nó só, mas ele já se apresenta como parte de um cluster.
 
 ```sh
+# 2.b.1
 cqlsh -e "SELECT cluster_name, release_version, cql_version, data_center, rack FROM system.local;"
 
 ```
@@ -355,6 +357,7 @@ cqlsh -e "SELECT cluster_name, release_version, cql_version, data_center, rack F
 ### 2.c. O ponto de vista do operador
 
 ```sh
+# 2.c.1
 nodetool status
 
 ```
@@ -385,6 +388,7 @@ O papel importante dela, porém, é **físico**: é na keyspace que se define co
 Crie a sua:
 
 ```sh
+# 2.d.1
 cqlsh -e "
 CREATE KEYSPACE lab
     WITH REPLICATION = {
@@ -397,6 +401,7 @@ CREATE KEYSPACE lab
 Conferindo:
 
 ```sh
+# 2.d.2
 cqlsh -e "DESCRIBE KEYSPACE lab;"
 
 ```
@@ -505,6 +510,7 @@ O `cqlsh` é a linha de comando do Cassandra. Ele tem dois modos:
 Este laboratório usa o modo não interativo do começo ao fim — assim nenhum comando depende de você estar "dentro" de algum lugar. Se quiser conhecer o modo interativo:
 
 ```sh
+# 3.a.1
 cqlsh
 
 ```
@@ -544,6 +550,7 @@ A lista completa está na [documentação](https://cassandra.apache.org/doc/late
 A primeira peça do aplicativo é o cadastro de clientes. Estas cinco pessoas você vai reencontrar na Parte 2, no sistema completo do banco — inclusive com o mesmo `id_cliente`:
 
 ```sh
+# 3.b.1
 cqlsh -e "
 CREATE TABLE lab.cliente (
     id_cliente  text PRIMARY KEY,
@@ -558,6 +565,7 @@ CREATE TABLE lab.cliente (
 #### O que o Cassandra realmente criou
 
 ```sh
+# 3.b.2
 cqlsh -e "DESCRIBE TABLE lab.cliente;"
 
 ```
@@ -595,6 +603,7 @@ A segunda: você escreveu cinco linhas e o Cassandra completou umas vinte opçõ
 #### INSERT
 
 ```sh
+# 3.b.3
 cqlsh -e "
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b162060','987.539.360-60','MARIVALDA','KANAMARY','marivalda@bmail.com');
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16242a','124.554.260-50','JUCILENE','MOREIRA CRUZ','jucilene@bmail.com');
@@ -607,6 +616,7 @@ INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b1636
 #### SELECT
 
 ```sh
+# 3.b.4
 cqlsh -e "SELECT id_cliente, nome, sobrenome FROM lab.cliente;"
 
 ```
@@ -628,6 +638,7 @@ cqlsh -e "SELECT id_cliente, nome, sobrenome FROM lab.cliente;"
 Busca pela chave, que é a consulta que o Cassandra faz melhor:
 
 ```sh
+# 3.b.5
 cqlsh -e "SELECT * FROM lab.cliente WHERE id_cliente = '2b162060';"
 
 ```
@@ -645,6 +656,7 @@ Agora uma busca por um campo que **não** é chave:
 > **Provoque este erro.**
 
 ```sh
+# 3.b.6
 cqlsh -e "SELECT * FROM lab.cliente WHERE nome = 'MARIVALDA';"
 
 ```
@@ -663,11 +675,13 @@ O `ALLOW FILTERING` sugerido na mensagem existe e faz exatamente o que o nome di
 #### UPDATE
 
 ```sh
+# 3.b.7
 cqlsh -e "UPDATE lab.cliente SET email = 'aldenora.moreira@bmail.com' WHERE id_cliente = '2b16353c';"
 
 ```
 
 ```sh
+# 3.b.8
 cqlsh -e "SELECT id_cliente, nome, email FROM lab.cliente WHERE id_cliente = '2b16353c';"
 
 ```
@@ -683,11 +697,13 @@ cqlsh -e "SELECT id_cliente, nome, email FROM lab.cliente WHERE id_cliente = '2b
 Agora experimente atualizar uma chave que não existe:
 
 ```sh
+# 3.b.9
 cqlsh -e "UPDATE lab.cliente SET nome = 'FANTASMA' WHERE id_cliente = 'NAO-EXISTE';"
 
 ```
 
 ```sh
+# 3.b.10
 cqlsh -e "SELECT id_cliente, nome, cpf FROM lab.cliente WHERE id_cliente = 'NAO-EXISTE';"
 
 ```
@@ -707,16 +723,19 @@ Por isso também não existe erro de chave duplicada. Um `INSERT` com uma chave 
 #### DELETE
 
 ```sh
+# 3.b.11
 cqlsh -e "DELETE FROM lab.cliente WHERE id_cliente = 'NAO-EXISTE';"
 
 ```
 
 ```sh
+# 3.b.12
 cqlsh -e "DELETE FROM lab.cliente WHERE id_cliente = '2b16256a';"
 
 ```
 
 ```sh
+# 3.b.13
 cqlsh -e "SELECT id_cliente, nome FROM lab.cliente WHERE id_cliente = '2b16256a';"
 
 ```
@@ -746,11 +765,14 @@ Toda tabela no Cassandra tem uma **chave primária** (`PRIMARY KEY`), e em `lab.
 
 ## 4. A chave vira endereço: partição e token
 
+### 4.a. O token
+
 Toda linha que você grava vai para uma **partição**, e a partição é escolhida aplicando uma função de hash sobre a partition key. Em `lab.cliente`, a partition key é `id_cliente` — a única coluna da `PRIMARY KEY`.
 
 O resultado dessa função é um número chamado **token**, e ele dá para consultar:
 
 ```sh
+# 4.a.1
 cqlsh -e "SELECT id_cliente, token(id_cliente), nome FROM lab.cliente;"
 
 ```
@@ -774,9 +796,10 @@ O token é um inteiro de 64 bits, produzido pelo particionador `Murmur3Partition
 
 No desenho os tokens são números pequenos, para caber no olho. No seu nó, o token da Marivalda é `-754340186604780055` — o princípio é o mesmo, só a escala muda.
 
-### 4.a. O ring deste nó
+### 4.b. O ring deste nó
 
 ```sh
+# 4.b.1
 nodetool ring
 
 ```
@@ -805,7 +828,7 @@ Agora localize a Marivalda. O token dela é `-754340186604780055`, e no trecho a
 
 Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, cada um ficaria com aproximadamente metade das faixas, e cada partição passaria a ter um endereço não só no disco, mas na rede. Esse é o assunto do laboratório de cluster.
 
-### 4.b. Partição e linha não são a mesma coisa
+### 4.c. Partição e linha não são a mesma coisa
 
 Em `lab.cliente`, cada partição tem exatamente uma linha, porque a `PRIMARY KEY` tem só a partition key. É o caso mais simples que existe, e também o menos interessante: uma partição de uma linha só não aproveita nada do que o Cassandra sabe fazer.
 
@@ -853,6 +876,7 @@ Os arquivos do Cassandra ficam em `/var/lib/cassandra`, e o seu usuário pode l�
 ### 5.c. Onde a tabela mora no disco
 
 ```sh
+# 5.c.1
 DIR=$(ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1)
 echo $DIR
 
@@ -867,6 +891,7 @@ O caminho é `keyspace/tabela-uuid`, e o UUID é sorteado na criação da tabela
 > O `| tail -1` não é decoração. Um `DROP TABLE` não remove o diretório: ele guarda um snapshot e deixa a pasta antiga no lugar. Se você recriar a tabela, passam a existir dois diretórios `cliente-*`, e sem o `tail -1` a variável receberia os dois caminhos de uma vez. Pegando sempre o mais recente, o comando funciona quantas vezes você repetir esta seção.
 
 ```sh
+# 5.c.2
 ls -la $DIR
 
 ```
@@ -882,6 +907,7 @@ drwxr-x--- 3 cassandra cassandra 4096 Oct 10 10:03 ..
 ### 5.d. No commit log
 
 ```sh
+# 5.d.1
 ls -la /var/lib/cassandra/commitlog/
 
 ```
@@ -896,6 +922,7 @@ Os 32 MB de cada arquivo são **pré-alocados**: o tamanho não diz nada sobre q
 Procure algo que só existe por causa do que você fez na seção 3 — a linha fantasma do upsert:
 
 ```sh
+# 5.d.2
 grep --text -o 'FANTASMA' /var/lib/cassandra/commitlog/*.log
 
 ```
@@ -907,6 +934,7 @@ grep --text -o 'FANTASMA' /var/lib/cassandra/commitlog/*.log
 O `grep` informa em qual dos arquivos encontrou — os nomes serão outros no seu ambiente, porque incluem o instante de criação do segmento. E o e-mail que você atualizou:
 
 ```sh
+# 5.d.3
 grep --text -o 'aldenora.moreira@bmail.com' /var/lib/cassandra/commitlog/*.log
 
 ```
@@ -918,6 +946,7 @@ grep --text -o 'aldenora.moreira@bmail.com' /var/lib/cassandra/commitlog/*.log
 Está tudo ali, em texto claro. Agora experimente com um nome:
 
 ```sh
+# 5.d.4
 grep -c --text 'MARIVALDA' /var/lib/cassandra/commitlog/*.log
 
 ```
@@ -940,11 +969,13 @@ Isso responde por que a escrita não fica mais lenta conforme você cria tabelas
 `nodetool flush` força a memtable a descer para o disco:
 
 ```sh
+# 5.e.1
 nodetool flush lab cliente
 
 ```
 
 ```sh
+# 5.e.2
 ls -la $DIR
 
 ```
@@ -983,6 +1014,7 @@ Oito arquivos, todos com o prefixo `nb-1-big`. Juntos eles formam **uma SSTable*
 São pouco mais de trezentos bytes. Cabe inteiro na tela:
 
 ```sh
+# 5.f.1
 od -A d -t x1z -v $DIR/nb-1-big-Data.db
 
 ```
@@ -1021,6 +1053,7 @@ Três coisas nesse despejo.
 O hexadecimal mostra que a linha apagada está no arquivo. Para ver **o que** ela guarda, existe uma ferramenta melhor, que traduz a SSTable para JSON:
 
 ```sh
+# 5.g.1
 sstabledump $DIR/nb-1-big-Data.db
 
 ```
@@ -1055,6 +1088,7 @@ Faz sentido, dado tudo o que você viu: apagar de verdade exigiria localizar o d
 Insira mais duas clientes:
 
 ```sh
+# 5.h.1
 cqlsh -e "
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b16396a','661.428.060-00','IVONE','GLAUCIA VIANA DUTRA','ivone@bmail.com');
 INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b163bcc','190.523.300-00','LUCILIA','ROSA LIMA PEREIRA','lucilia@yahoo.com');"
@@ -1064,6 +1098,7 @@ INSERT INTO lab.cliente(id_cliente, cpf, nome, sobrenome, email) VALUES ('2b163b
 O arquivo que já existe mudou?
 
 ```sh
+# 5.h.2
 ls -l $DIR/nb-1-big-Data.db; grep -c --text IVONE $DIR/nb-1-big-Data.db
 
 ```
@@ -1076,11 +1111,13 @@ ls -l $DIR/nb-1-big-Data.db; grep -c --text IVONE $DIR/nb-1-big-Data.db
 Mesmo tamanho, mesmo horário, e a Ivone não está nele. Agora um novo flush:
 
 ```sh
+# 5.h.3
 nodetool flush lab cliente
 
 ```
 
 ```sh
+# 5.h.4
 ls -1 $DIR/*-Data.db
 
 ```
@@ -1101,6 +1138,7 @@ Mas o número de arquivos não pode crescer para sempre.
 Vamos atualizar o sobrenome da Marivalda para algo bem grande, de modo que fique fácil de achar no disco:
 
 ```sh
+# 5.i.1
 cqlsh -e "
 UPDATE lab.cliente
 SET sobrenome = 'DE ALCÂNTARA FRANCISCO ANTÔNIO JOÃO CARLOS XAVIER DE PAULA MIGUEL RAFAEL JOAQUIM JOSÉ GONZAGA PASCOAL CIPRIANO SERAFIM DE BRAGANÇA E BOURBON KANAMARY'
@@ -1109,11 +1147,13 @@ WHERE id_cliente = '2b162060';"
 ```
 
 ```sh
+# 5.i.2
 nodetool flush lab cliente
 
 ```
 
 ```sh
+# 5.i.3
 ls -l $DIR/*-Data.db | awk '{print $5, $NF}'
 
 ```
@@ -1127,6 +1167,7 @@ ls -l $DIR/*-Data.db | awk '{print $5, $NF}'
 Três arquivos. E agora existem **duas versões do sobrenome da Marivalda no disco**: o `KANAMARY` original no `nb-1` e o nome comprido no `nb-3`. Olhe o `nb-3` inteiro — são menos de duzentos bytes:
 
 ```sh
+# 5.i.4
 od -A d -t x1z -v $DIR/nb-3-big-Data.db
 
 ```
@@ -1151,6 +1192,7 @@ A chave `2b162060` e o sobrenome novo. **Só isso**: nem CPF, nem nome, nem e-ma
 O `sstabledump` mostra o mesmo de forma legível:
 
 ```sh
+# 5.i.5
 sstabledump $DIR/nb-3-big-Data.db
 
 ```
@@ -1176,11 +1218,13 @@ Uma linha com **uma célula**. O `UPDATE` gravou só o que mudou. É isso que se
 A leitura resolve isso comparando timestamps e devolvendo o valor mais recente — o que funciona, mas custa. Cedo ou tarde é preciso consolidar. Normalmente o Cassandra faz isso sozinho, por conta da `SizeTieredCompactionStrategy` que apareceu no `DESCRIBE TABLE`; aqui vamos forçar:
 
 ```sh
+# 5.i.6
 nodetool compact lab cliente
 
 ```
 
 ```sh
+# 5.i.7
 ls -l $DIR/*-Data.db | awk '{print $5, $NF}'
 
 ```
@@ -1198,6 +1242,7 @@ Três arquivos viraram um. Isso é **compactação**, e o conceito por trás del
 Veja o que sobrou da Marivalda:
 
 ```sh
+# 5.i.8
 sstabledump $DIR/nb-4-big-Data.db
 
 ```
@@ -1225,6 +1270,7 @@ Uma única célula `sobrenome`, com o valor novo. E repare no detalhe: ela tem *
 ### 5.j. O tombstone que sobreviveu
 
 ```sh
+# 5.j.1
 sstabledump $DIR/nb-4-big-Data.db | grep -B3 deletion_info
 
 ```
@@ -1239,6 +1285,7 @@ sstabledump $DIR/nb-4-big-Data.db | grep -B3 deletion_info
 A compactação descartou o sobrenome antigo da Marivalda, mas **manteve os dois tombstones**. Por quê?
 
 ```sh
+# 5.j.2
 cqlsh -e "SELECT gc_grace_seconds FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
 
 ```
@@ -1276,6 +1323,7 @@ A Marivalda tem **três cartões de crédito**. O aplicativo precisa listá-los 
 Cada cartão pertence a uma cliente, e a tela busca os cartões **pela cliente**. Pela seção 3, a busca só funciona pela chave — então a chave seria `id_cliente`:
 
 ```sh
+# 6.a.1
 cqlsh -e "
 CREATE TABLE lab.cartao_credito (
     id_cliente   text PRIMARY KEY,
@@ -1289,6 +1337,7 @@ CREATE TABLE lab.cartao_credito (
 Cadastre os três cartões da Marivalda:
 
 ```sh
+# 6.a.2
 cqlsh -e "
 INSERT INTO lab.cartao_credito (id_cliente, id_cartao, num_cartao, limite_total) VALUES ('2b162060','007c2c1c','5450 3799 9172 8454',1000);
 INSERT INTO lab.cartao_credito (id_cliente, id_cartao, num_cartao, limite_total) VALUES ('2b162060','897199aa','5576 8924 9861 7490',200);
@@ -1299,6 +1348,7 @@ INSERT INTO lab.cartao_credito (id_cliente, id_cartao, num_cartao, limite_total)
 Três `INSERT`, nenhum erro. A tela pede os cartões dela:
 
 ```sh
+# 6.a.3
 cqlsh -e "SELECT * FROM lab.cartao_credito WHERE id_cliente = '2b162060';"
 
 ```
@@ -1322,6 +1372,7 @@ Esse é o primeiro dos três critérios que toda chave precisa passar, e o que m
 Se a chave precisa ser única, por que não o id do cartão? Cada cartão tem o seu, e nenhum se repete:
 
 ```sh
+# 6.b.1
 cqlsh -e "
 DROP TABLE lab.cartao_credito;
 CREATE TABLE lab.cartao_credito (
@@ -1338,6 +1389,7 @@ A chave é única: nenhum cartão sobrescreveria outro. Agora a consulta que a t
 > **Provoque este erro.**
 
 ```sh
+# 6.b.2
 cqlsh -e "SELECT * FROM lab.cartao_credito WHERE id_cliente = '2b162060';"
 
 ```
@@ -1360,6 +1412,7 @@ Essa tabela não está errada em si: ela serviria a outra tela, a de detalhe de 
 A Marivalda é **uma** cliente com **vários** cartões. A chave precisa dizer as duas coisas: de quem é o cartão — o que a tela tem em mãos — e qual cartão é — o que distingue um do outro. Recrie a tabela:
 
 ```sh
+# 6.c.1
 cqlsh -e "
 DROP TABLE lab.cartao_credito;
 CREATE TABLE lab.cartao_credito (
@@ -1375,6 +1428,7 @@ CREATE TABLE lab.cartao_credito (
 Repare na forma nova: a `PRIMARY KEY` saiu da linha da coluna e virou uma cláusula no fim, porque agora ela tem **duas colunas** e a **ordem** entre elas importa. Repita os cadastros, e acrescente o cartão da Jucilene:
 
 ```sh
+# 6.c.2
 cqlsh -e "
 INSERT INTO lab.cartao_credito (id_cliente, id_cartao, num_cartao, limite_total) VALUES ('2b162060','007c2c1c','5450 3799 9172 8454',1000);
 INSERT INTO lab.cartao_credito (id_cliente, id_cartao, num_cartao, limite_total) VALUES ('2b162060','897199aa','5576 8924 9861 7490',200);
@@ -1384,6 +1438,7 @@ INSERT INTO lab.cartao_credito (id_cliente, id_cartao, num_cartao, limite_total)
 ```
 
 ```sh
+# 6.c.3
 cqlsh -e "SELECT * FROM lab.cartao_credito WHERE id_cliente = '2b162060';"
 
 ```
@@ -1410,11 +1465,13 @@ Os três cartões, **e em ordem de `id_cartao`**, sem que você tenha pedido. As
 A ordem não é arrumação da consulta: é como o dado está gravado. Mande para o disco e olhe:
 
 ```sh
+# 6.d.1
 nodetool flush lab cartao_credito
 
 ```
 
 ```sh
+# 6.d.2
 DIR_CARTAO=$(ls -rtd /var/lib/cassandra/data/lab/cartao_credito-* | tail -1)
 sstabledump $DIR_CARTAO/*-Data.db
 
@@ -1540,6 +1597,7 @@ E o preço do método, que é honesto declarar agora: **a consulta que ninguém 
 O resultado da modelagem está carregado no seu ambiente:
 
 ```sh
+# 7.d.1
 cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='infobarbank';"
 
 ```
@@ -1601,6 +1659,8 @@ Toda chave do modelo lógico passa por três perguntas. A primeira você já con
 
 ## 8. Não existe JOIN — existe outra tabela
 
+### 8.a. A tentativa de JOIN
+
 Sua tabela `lab.cliente` responde bem a uma pergunta: *"quem é o cliente de id X?"*. Um sistema bancário faz essa pergunta uma vez, no login, e depois faz outras dez. A mais imediata: *"quais os lançamentos desta cliente?"*
 
 No modelo relacional isso é uma tabela `lancamento` com chave estrangeira e um `JOIN`. Vamos tentar — e não em tabelas que você acabou de inventar, mas em duas que existem, povoadas, no sistema do banco:
@@ -1608,6 +1668,7 @@ No modelo relacional isso é uma tabela `lancamento` com chave estrangeira e um 
 > **Provoque este erro.**
 
 ```sh
+# 8.a.1
 cqlsh -e "
 SELECT nome_completo, valor
 FROM infobarbank.cliente
@@ -1626,6 +1687,7 @@ Leia com atenção: **`expecting EOF`**. O interpretador chegou ao fim do nome d
 > **Provoque este erro.**
 
 ```sh
+# 8.a.2
 cqlsh -e "SELECT * FROM infobarbank.cliente, infobarbank.conta_corrente;"
 
 ```
@@ -1639,26 +1701,30 @@ A razão está nas seções 2 e 4. Um `JOIN` combina linhas de dois conjuntos, e
 
 Então **como um sistema real resolve isso?**
 
-### 8.a. O mesmo dado, quatro vezes
+### 8.b. O mesmo dado, quatro vezes
 
 A seção 7 mostrou quatro tabelas de cliente: `cliente`, `cliente_por_cpf`, `cliente_por_email`, `cliente_por_telefone`. Parecem quatro tabelas diferentes. Procure a Marivalda em cada uma:
 
 ```sh
+# 8.b.1
 cqlsh -e "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente WHERE id_cliente='2b162060';"
 
 ```
 
 ```sh
+# 8.b.2
 cqlsh -e "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_cpf WHERE cpf='987.539.360-60';"
 
 ```
 
 ```sh
+# 8.b.3
 cqlsh -e "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_email WHERE email='marivalda@bmail.com';"
 
 ```
 
 ```sh
+# 8.b.4
 cqlsh -e "SELECT id_cliente, nome_completo, estado FROM infobarbank.cliente_por_telefone WHERE telefone='(11) 987654321';"
 
 ```
@@ -1675,7 +1741,7 @@ Os quatro comandos devolvem exatamente a mesma linha:
 
 Isso tem nome.
 
-### 8.b. Desnormalização
+### 8.c. Desnormalização
 
 **Desnormalização** é gravar o mesmo dado em mais de um lugar para que cada consulta encontre tudo o que precisa num só lugar. É o oposto da normalização que você aprendeu em modelagem relacional, onde cada fato existe uma vez e as consultas o remontam com `JOIN`.
 
@@ -1694,6 +1760,7 @@ A terceira linha é a que custa caro, e vamos medir as duas primeiras antes de c
 Quantas linhas em cada uma das quatro tabelas?
 
 ```sh
+# 8.c.1
 cqlsh -e "
 SELECT count(*) FROM infobarbank.cliente;
 SELECT count(*) FROM infobarbank.cliente_por_cpf;
@@ -1707,11 +1774,13 @@ Cinquenta em cada, com um aviso em cada — `Aggregation query used without part
 Agora o espaço em disco. As keyspaces do curso foram carregadas há pouco, e parte delas pode estar ainda na memtable — sem arquivo no disco, como você viu na seção 5. Force a descida antes de medir:
 
 ```sh
+# 8.c.2
 nodetool flush infobarbank
 
 ```
 
 ```sh
+# 8.c.3
 nodetool tablestats infobarbank.cliente infobarbank.cliente_por_cpf infobarbank.cliente_por_email infobarbank.cliente_por_telefone
 
 ```
@@ -1741,6 +1810,7 @@ Cerca de **40 KB para armazenar 10 KB de clientes** — o fator quatro, medido. 
 Antes de seguir, olhe a linha de partições, porque ela denuncia algo que as contagens escondem. As quatro tabelas têm 50 linhas, mas `cliente_por_cpf` estima **30 partições** e `cliente_por_telefone`, **49**. Menos partições que linhas significa linhas diferentes com a mesma chave. Esse número é uma estimativa — confirme contando as chaves distintas:
 
 ```sh
+# 8.c.4
 cqlsh -e "SELECT DISTINCT cpf FROM infobarbank.cliente_por_cpf;"
 
 ```
@@ -1780,6 +1850,7 @@ O segundo custo é escrever quatro vezes em vez de uma. O terceiro é o que queb
 Crie uma tabela de acesso por e-mail para a `lab.cliente`, do mesmo jeito que o banco fez:
 
 ```sh
+# 8.c.5
 cqlsh -e "
 CREATE TABLE lab.cliente_por_email (
   email text PRIMARY KEY,
@@ -1793,6 +1864,7 @@ INSERT INTO lab.cliente_por_email (email, id_cliente, nome) VALUES ('marivalda@b
 Duas tabelas, o mesmo dado, tudo em ordem. Agora a Marivalda troca de e-mail, e a aplicação atualiza o cadastro:
 
 ```sh
+# 8.c.6
 cqlsh -e "UPDATE lab.cliente SET email = 'marivalda.kanamary@bmail.com' WHERE id_cliente = '2b162060';"
 
 ```
@@ -1800,6 +1872,7 @@ cqlsh -e "UPDATE lab.cliente SET email = 'marivalda.kanamary@bmail.com' WHERE id
 Nenhum erro. Amanhã ela tenta entrar com o e-mail novo:
 
 ```sh
+# 8.c.7
 cqlsh -e "SELECT * FROM lab.cliente_por_email WHERE email = 'marivalda.kanamary@bmail.com';"
 
 ```
@@ -1814,6 +1887,7 @@ cqlsh -e "SELECT * FROM lab.cliente_por_email WHERE email = 'marivalda.kanamary@
 **O login falhou.** E o e-mail antigo, que ela não usa mais, continua funcionando:
 
 ```sh
+# 8.c.8
 cqlsh -e "SELECT * FROM lab.cliente_por_email WHERE email = 'marivalda@bmail.com';"
 
 ```
@@ -1831,6 +1905,7 @@ Piora um pouco. O conserto óbvio não é permitido:
 > **Provoque este erro.**
 
 ```sh
+# 8.c.9
 cqlsh -e "UPDATE lab.cliente_por_email SET email = 'marivalda.kanamary@bmail.com' WHERE email = 'marivalda@bmail.com';"
 
 ```
@@ -1842,6 +1917,7 @@ InvalidRequest: ... "PRIMARY KEY part email found in SET part"
 O e-mail é a partition key: ele **decide em que partição a linha mora**. Mudá-lo não é alterar um campo, é mudar a linha de lugar — e isso, para o Cassandra, são duas operações. Insira a nova e apague a velha:
 
 ```sh
+# 8.c.10
 cqlsh -e "
 INSERT INTO lab.cliente_por_email (email, id_cliente, nome) VALUES ('marivalda.kanamary@bmail.com','2b162060','MARIVALDA');
 DELETE FROM lab.cliente_por_email WHERE email = 'marivalda@bmail.com';
@@ -1858,6 +1934,7 @@ SELECT * FROM lab.cliente_por_email;"
 Some a tabela auxiliar e devolva o e-mail original — as próximas seções usam a `lab.cliente` como ela estava:
 
 ```sh
+# 8.c.11
 cqlsh -e "
 DROP TABLE lab.cliente_por_email;
 UPDATE lab.cliente SET email = 'marivalda@bmail.com' WHERE id_cliente = '2b162060';"
@@ -1904,7 +1981,7 @@ Agora que a técnica tem nome, ela fica visível em quase toda tabela que você 
 
 Não existe uma única tabela do `infobarbank` cujo conteúdo não apareça em outra. **É a regra, não a exceção.**
 
-### 8.c. O que você deve conseguir explicar
+### 8.d. O que você deve conseguir explicar
 
 - Por que o CQL não tem `JOIN`, em termos de onde os dados estão fisicamente.
 - O que é desnormalização, e por que em Cassandra ela é o padrão e não a exceção.
@@ -1935,6 +2012,7 @@ Nesta seção vamos percorrer cada forma de chave dessa tabela — coluna única
 Os lançamentos são gerados em relação à data de execução, então as competências disponíveis no seu ambiente são outras. Descubra:
 
 ```sh
+# 9.a.1
 cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_periodo;"
 
 ```
@@ -1949,6 +2027,7 @@ cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_p
 Use uma competência **do meio da lista** nos exemplos — nem a primeira, nem a última. O motivo aparece ao olhar a data do último lançamento de cada uma:
 
 ```sh
+# 9.a.2
 cqlsh -e "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
 
 ```
@@ -1958,6 +2037,7 @@ cqlsh -e "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE i
 ```
 
 ```sh
+# 9.a.3
 cqlsh -e "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-07';"
 
 ```
@@ -1969,6 +2049,7 @@ cqlsh -e "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE i
 A última competência para no dia **25** — que é hoje. Ela é o **mês corrente**, e por isso cobre um mês incompleto. A primeira da lista tem o problema simétrico:
 
 ```sh
+# 9.a.4
 cqlsh -e "SELECT min(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2025-07';"
 
 ```
@@ -2003,6 +2084,7 @@ O caso mais simples, o mesmo da sua `lab.cliente`: a `PRIMARY KEY` tem uma colun
 A tabela `cliente` do banco tem exatamente essa forma:
 
 ```sh
+# 9.c.1
 cqlsh -e "DESCRIBE TABLE infobarbank.cliente;"
 
 ```
@@ -2016,6 +2098,7 @@ Repare **onde** essa declaração aparece: na própria linha da coluna. É a for
 Recupere a Marivalda:
 
 ```sh
+# 9.c.2
 cqlsh -e "SELECT id_cliente, nome_completo, cpf, estado FROM infobarbank.cliente WHERE id_cliente='2b162060';"
 
 ```
@@ -2033,6 +2116,7 @@ Esta é uma das saídas que devem coincidir **exatamente** com a sua — cliente
 A **Q7** é o detalhe de um lançamento, e usa a mesma chave de uma coluna:
 
 ```sh
+# 9.c.3
 cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_detalhe;"
 
 ```
@@ -2046,6 +2130,7 @@ Mesma forma, outra tabela. Só que aqui aparece um problema que a `cliente` não
 Isso não é inconveniência do laboratório, é a própria mecânica do aplicativo. A tela de detalhe nunca é a primeira: a cliente chega nela **tocando numa linha do extrato**, e é a tela anterior que carrega o id. Então faça o que o aplicativo faz — leia o extrato primeiro:
 
 ```sh
+# 9.c.4
 cqlsh -e "
 SELECT id_lancamento, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_periodo
@@ -2071,6 +2156,7 @@ Os seus cinco ids são outros. **Escolha qualquer um deles** e siga com ele nos 
 Agora a Q7, com o id que você escolheu:
 
 ```sh
+# 9.c.5
 cqlsh -e "
 SELECT id_lancamento, data_hora, estabelecimento, valor, status, codigo_autenticacao
 FROM infobarbank.lancamentos_detalhe
@@ -2095,6 +2181,7 @@ Duas leituras, duas partições, dois nós possíveis num cluster — e é assim
 Agora a `PRIMARY KEY` tem duas partes. A **Q1**, dados da conta:
 
 ```sh
+# 9.d.1
 cqlsh -e "DESCRIBE TABLE infobarbank.conta_corrente;"
 
 ```
@@ -2107,6 +2194,7 @@ cqlsh -e "DESCRIBE TABLE infobarbank.conta_corrente;"
 Leia a cláusula da esquerda para a direita: a **primeira** coluna é a partition key, as demais são clustering keys. Aqui é `id_cliente` que decide a partição, e o `CLUSTERING ORDER BY` que veio de brinde confirma quem são as outras duas.
 
 ```sh
+# 9.d.2
 cqlsh -e "
 SELECT id_conta, status, apelido_cliente, saldo_disponivel
 FROM infobarbank.conta_corrente
@@ -2123,6 +2211,7 @@ WHERE id_cliente='2b162060';"
 E a **Q2**, cartões e limites, com a mesma forma:
 
 ```sh
+# 9.d.3
 cqlsh -e "
 SELECT status, id_cartao, num_cartao, limite_total, limite_disponivel
 FROM infobarbank.cartao_credito
@@ -2147,6 +2236,7 @@ E note a ordem: os dois `ATIVO` vêm antes do `INATIVO`, porque `status` é a pr
 Essa é também a forma das tabelas de acesso alternativo que você viu na seção 8:
 
 ```sh
+# 9.d.4
 cqlsh -e "DESCRIBE TABLE infobarbank.cliente_por_cpf;"
 
 ```
@@ -2160,6 +2250,7 @@ Por que `id_cliente` como clustering key, se um CPF identifica uma pessoa? Por s
 E não é hipótese. É exatamente o que você mediu na seção 8: **30 partições para 50 clientes.** Se a chave fosse apenas `cpf`, aqueles trinta clientes que dividem dez CPFs teriam virado dez linhas, e vinte pessoas simplesmente não existiriam nesta tabela — sem erro, sem aviso. A clustering key é o que impede isso. Comprove:
 
 ```sh
+# 9.d.5
 cqlsh -e "SELECT cpf, id_cliente, nome_completo FROM infobarbank.cliente_por_cpf WHERE cpf='892.394.120-12';"
 
 ```
@@ -2184,6 +2275,7 @@ Quatro pessoas, uma partição, quatro linhas ordenadas por `id_cliente`. A tela
 A **Q4**, extrato por período, é onde o modelo fica interessante:
 
 ```sh
+# 9.e.1
 cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_por_periodo;"
 
 ```
@@ -2196,6 +2288,7 @@ cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_por_periodo;"
 A partition key agora tem **duas** colunas: `id_cliente` **e** `competencia`. O hash é calculado sobre o par.
 
 ```sh
+# 9.e.2
 cqlsh -e "
 SELECT data_hora, id_produto, tipo_operacao, estabelecimento, valor
 FROM infobarbank.lancamentos_por_periodo
@@ -2241,6 +2334,7 @@ Acrescentar a competência à partition key quebra esse histórico em uma parti�
 Vamos construir a versão sem bucket e comparar. Primeiro a tabela:
 
 ```sh
+# 9.f.1
 cqlsh -e "
 CREATE TABLE lab.lancamento_sem_bucket (
     id_cliente      text,
@@ -2256,6 +2350,7 @@ CREATE TABLE lab.lancamento_sem_bucket (
 Agora 200 mil lançamentos de **uma só cliente**, distribuídos em dez anos — o que um correntista ativo acumula em uma década:
 
 ```sh
+# 9.f.2
 LC_ALL=C awk 'BEGIN{
   srand(42);
   split("Supermercado,Restaurante,Farmácia,Padaria,Posto de gasolina", est, ",");
@@ -2267,6 +2362,7 @@ LC_ALL=C awk 'BEGIN{
 ```
 
 ```sh
+# 9.f.3
 cqlsh -e "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, estabelecimento, valor) FROM 'lancamentos.csv' WITH HEADER=TRUE;"
 
 ```
@@ -2280,6 +2376,7 @@ cqlsh -e "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, 
 Force a descida para o disco:
 
 ```sh
+# 9.f.4
 nodetool flush lab lancamento_sem_bucket
 
 ```
@@ -2287,6 +2384,7 @@ nodetool flush lab lancamento_sem_bucket
 E veja quantas SSTables a tabela tem:
 
 ```sh
+# 9.f.5
 ls -1 /var/lib/cassandra/data/lab/lancamento_sem_bucket-*/*-Data.db
 
 ```
@@ -2299,6 +2397,7 @@ ls -1 /var/lib/cassandra/data/lab/lancamento_sem_bucket-*/*-Data.db
 Duas, e você só pediu um flush. A outra o Cassandra fez sozinho, no meio do `COPY`: 200 mil linhas não couberam no espaço reservado às memtables, e ele descarregou a maior delas para liberar memória. É o ciclo da seção 5 acontecendo sem ninguém pedir — e agora a mesma partição está em dois arquivos. Para medi-la inteira, junte os dois:
 
 ```sh
+# 9.f.6
 nodetool compact lab lancamento_sem_bucket
 
 ```
@@ -2306,6 +2405,7 @@ nodetool compact lab lancamento_sem_bucket
 Agora compare as duas tabelas:
 
 ```sh
+# 9.f.7
 nodetool tablestats lab.lancamento_sem_bucket
 
 ```
@@ -2317,6 +2417,7 @@ nodetool tablestats lab.lancamento_sem_bucket
 ```
 
 ```sh
+# 9.f.8
 nodetool tablestats infobarbank.lancamentos_por_periodo
 
 ```
@@ -2339,6 +2440,7 @@ Uma partição de **10 MB**, contra 2,7 KB. E isso com 200 mil linhas de **uma**
 Aqui está a parte que costuma surpreender. Uma leitura pontual dentro da partição gigante continua rápida:
 
 ```sh
+# 9.f.9
 cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-06-01' AND data_hora < '2020-06-08';"
 
 ```
@@ -2350,6 +2452,7 @@ cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162
 Responde em meio segundo. O índice da partição mais as clustering keys levam direto ao trecho pedido, e o tamanho da partição quase não pesa. Já atravessar a partição inteira custa:
 
 ```sh
+# 9.f.10
 cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060';"
 
 ```
@@ -2361,6 +2464,7 @@ cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162
 Três vezes mais lento — e com 200 mil linhas isso ainda é tolerável. Agora que houve leituras, o `tablehistograms` mostra a distribuição das duas tabelas lado a lado:
 
 ```sh
+# 9.f.11
 nodetool tablehistograms lab lancamento_sem_bucket
 
 ```
@@ -2373,6 +2477,7 @@ Percentile      Read Latency     Write Latency          SSTables    Partition Si
 ```
 
 ```sh
+# 9.f.12
 nodetool tablehistograms infobarbank lancamentos_por_periodo
 
 ```
@@ -2397,6 +2502,7 @@ O bucket não é grátis, e o custo é na consulta. Com a competência na partit
 > **Provoque este erro.**
 
 ```sh
+# 9.f.13
 cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia >= '2026-04';"
 
 ```
@@ -2408,6 +2514,7 @@ InvalidRequest: ... "Cannot execute this query as it might involve data filterin
 Faz sentido, pelo que você viu na seção 4: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre abril e junho". A saída é listar os buckets desejados:
 
 ```sh
+# 9.f.14
 cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
@@ -2427,6 +2534,7 @@ GROUP BY competencia;"
 E para um período que atravessa buckets, combina-se `IN` no bucket com o intervalo na clustering key:
 
 ```sh
+# 9.f.15
 cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
@@ -2446,6 +2554,7 @@ GROUP BY competencia;"
 Compare com a tabela sem bucket, onde o mesmo período é um intervalo só, sem que a aplicação precise saber de meses:
 
 ```sh
+# 9.f.16
 cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-05-20' AND data_hora < '2020-06-10';"
 
 ```
@@ -2504,6 +2613,7 @@ O bucket resolve o tamanho da partição, mas cobra um preço na consulta: **que
 Sem bucket, quem limita o tamanho é a cardinalidade natural do par: um cliente não compra a mesma geladeira dez mil vezes. Confira:
 
 ```sh
+# 9.f.17
 cqlsh -e "SELECT count(*) FROM ecommerce.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
 
 ```
@@ -2513,6 +2623,7 @@ Vinte e poucas linhas em doze competências — mesma ordem de grandeza das part
 Terminada a comparação, libere os 10 MB:
 
 ```sh
+# 9.f.18
 cqlsh -e "DROP TABLE lab.lancamento_sem_bucket;"
 
 ```
@@ -2522,6 +2633,7 @@ cqlsh -e "DROP TABLE lab.lancamento_sem_bucket;"
 Q3, Q5 e Q6 pedem os mesmos lançamentos da mesma cliente no mesmo mês. Só a forma de filtrar muda. A tentação é atender todas com uma tabela só — e o banco tentou. É a `lancamentos_cartao_credito`:
 
 ```sh
+# 9.g.1
 cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_cartao_credito;"
 
 ```
@@ -2536,6 +2648,7 @@ Todas as colunas de filtro estão na chave. Serve à Q4, porque `data_hora` é a
 > **Provoque este erro.**
 
 ```sh
+# 9.g.2
 cqlsh -e "
 SELECT data_hora, status, valor FROM infobarbank.lancamentos_cartao_credito
 WHERE id_cliente='2b162060' AND competencia='2026-06' AND status='APROVADA';"
@@ -2560,6 +2673,7 @@ Ter a coluna na chave não basta: as clustering keys são uma **ordem**, e só a
 Q3 — últimos aprovados:
 
 ```sh
+# 9.g.3
 cqlsh -e "
 SELECT status, data_hora, id_produto, estabelecimento, valor
 FROM infobarbank.lancamentos_por_status
@@ -2581,6 +2695,7 @@ LIMIT 5;"
 Q5 — lançamentos de um cartão específico:
 
 ```sh
+# 9.g.4
 cqlsh -e "
 SELECT id_produto, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_produto
@@ -2603,6 +2718,7 @@ WHERE id_cliente='2b162060' AND competencia='2026-06' AND id_produto='897199aa';
 Q6 — por tipo de operação:
 
 ```sh
+# 9.g.5
 cqlsh -e "
 SELECT tipo_operacao, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_tipo
@@ -2627,6 +2743,7 @@ LIMIT 4;"
 Nas quatro tabelas, a última clustering key antes do id é `data_hora`, em ordem decrescente. É isso que faz o `LIMIT 5` da Q3 devolver os cinco **mais recentes** sem `ORDER BY`. Veja o que acontece quando a chave é única mas não ordena pelo que a tela mostra. Na sua bancada, um extrato cuja clustering key é só o id do lançamento, gerado com `uuid()`:
 
 ```sh
+# 9.g.6
 cqlsh -e "
 CREATE TABLE lab.extrato_por_uuid (
     id_cliente      text,
@@ -2647,6 +2764,7 @@ INSERT INTO lab.extrato_por_uuid (id_cliente, competencia, id_lancamento, data_h
 A tela pede os três mais recentes:
 
 ```sh
+# 9.g.7
 cqlsh -e "SELECT data_hora, estabelecimento FROM lab.extrato_por_uuid WHERE id_cliente='2b162060' AND competencia='2026-06' LIMIT 3;"
 
 ```
@@ -2664,6 +2782,7 @@ Três linhas, numa ordem que não é a do tempo — a sua será outra, porque os
 > **Provoque este erro.**
 
 ```sh
+# 9.g.8
 cqlsh -e "SELECT data_hora, estabelecimento FROM lab.extrato_por_uuid WHERE id_cliente='2b162060' AND competencia='2026-06' ORDER BY data_hora DESC LIMIT 3;"
 
 ```
@@ -2675,6 +2794,7 @@ InvalidRequest: ... "Order by is currently only supported on the clustered colum
 > **Ordenação.** A clustering key decide a ordem física das linhas, e a consulta só consegue devolver nessa ordem (ou na inversa). Se a tela mostra "mais recente primeiro", a data precisa estar na clustering key, antes do id.
 
 ```sh
+# 9.g.9
 cqlsh -e "DROP TABLE lab.extrato_por_uuid;"
 
 ```
@@ -2688,6 +2808,7 @@ Quatro tentativas que o Cassandra recusa. Cada mensagem diz algo diferente sobre
 > **Provoque este erro.**
 
 ```sh
+# 9.h.1
 cqlsh -e "SELECT * FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060';"
 
 ```
@@ -2704,6 +2825,7 @@ O hash é calculado sobre o par completo. Com metade da chave, o Cassandra não 
 > **Provoque este erro.**
 
 ```sh
+# 9.h.2
 cqlsh -e "SELECT * FROM infobarbank.lancamentos_por_status WHERE status='APROVADA';"
 
 ```
@@ -2719,6 +2841,7 @@ Mesma mensagem, outra causa. `status` ordena as linhas *dentro* da partição; s
 > **Provoque este erro.**
 
 ```sh
+# 9.h.3
 cqlsh -e "
 SELECT * FROM infobarbank.lancamentos_por_produto
 WHERE id_cliente='2b162060' AND competencia='2026-06' AND data_hora>='2026-06-01';"
@@ -2737,6 +2860,7 @@ Esta é a mensagem mais informativa das quatro, e vale decorar o princípio: as 
 > **Provoque este erro.**
 
 ```sh
+# 9.h.4
 cqlsh -e "
 SELECT * FROM infobarbank.lancamentos_por_periodo
 WHERE id_cliente='2b162060' AND competencia='2026-06'
@@ -2758,6 +2882,7 @@ O erro sugere `ALLOW FILTERING` desde a seção 3. Vamos ver o que ele custa, co
 Primeiro a consulta correta, com a partition key completa:
 
 ```sh
+# 9.i.1
 cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
 
 ```
@@ -2772,6 +2897,7 @@ Read 26 live rows and 0 tombstone cells
 **Uma partição, 26 linhas lidas.** Agora a mesma pergunta, sem informar a cliente, forçando o filtro:
 
 ```sh
+# 9.i.2
 cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE competencia='2026-06' ALLOW FILTERING;"
 
 ```
@@ -2811,6 +2937,7 @@ Volte à consulta que falhou na seção 3:
 > **Provoque este erro.**
 
 ```sh
+# 10.a.1
 cqlsh -e "SELECT nome, sobrenome FROM lab.cliente WHERE nome='MARIVALDA';"
 
 ```
@@ -2822,6 +2949,7 @@ InvalidRequest: ... "Cannot execute this query as it might involve data filterin
 Agora crie um índice sobre `nome`:
 
 ```sh
+# 10.a.2
 cqlsh -e "CREATE INDEX cliente_nome_sai ON lab.cliente(nome) USING 'sai';"
 
 ```
@@ -2829,6 +2957,7 @@ cqlsh -e "CREATE INDEX cliente_nome_sai ON lab.cliente(nome) USING 'sai';"
 E repita a consulta:
 
 ```sh
+# 10.a.3
 cqlsh -e "SELECT id_cliente, nome, sobrenome FROM lab.cliente WHERE nome='MARIVALDA';"
 
 ```
@@ -2846,6 +2975,7 @@ Funciona. O `USING 'sai'` seleciona o **Storage Attached Index**, que na versão
 O nome não é decorativo: o índice está *anexado ao armazenamento*. Veja o que apareceu no diretório da tabela:
 
 ```sh
+# 10.a.4
 ls -1 $DIR | grep SAI
 
 ```
@@ -2880,6 +3010,7 @@ Agora olhe a `nb-4`: onze componentes novos, com o prefixo da SSTable que você 
 Ligue o `TRACING` e leia com cuidado:
 
 ```sh
+# 10.a.5
 cqlsh -e "TRACING ON; SELECT id_cliente, nome FROM lab.cliente WHERE nome='MARIVALDA';"
 
 ```
@@ -2914,6 +3045,7 @@ Ou seja: o SAI não substitui a modelagem orientada a consultas, ele **cobre o q
 Remova o índice antes de seguir:
 
 ```sh
+# 10.a.6
 cqlsh -e "DROP INDEX lab.cliente_nome_sai;"
 
 ```
@@ -2923,6 +3055,7 @@ cqlsh -e "DROP INDEX lab.cliente_nome_sai;"
 Na seção 5 você viu três SSTables virarem uma. A estratégia que decidiu isso apareceu no `DESCRIBE TABLE`:
 
 ```sh
+# 10.b.1
 cqlsh -e "SELECT compaction FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
 
 ```
@@ -2936,11 +3069,13 @@ Historicamente era preciso escolher entre estratégias com comportamentos bem di
 A versão 5 trouxe a **Unified Compaction Strategy**, que unifica as duas primeiras em um único algoritmo com um parâmetro:
 
 ```sh
+# 10.b.2
 cqlsh -e "ALTER TABLE lab.cliente WITH compaction = {'class':'UnifiedCompactionStrategy'};"
 
 ```
 
 ```sh
+# 10.b.3
 cqlsh -e "SELECT compaction FROM system_schema.tables WHERE keyspace_name='lab' AND table_name='cliente';"
 
 ```
@@ -2958,6 +3093,7 @@ O parâmetro é o `scaling_parameters`:
 | `N` | o meio do caminho |
 
 ```sh
+# 10.b.4
 cqlsh -e "ALTER TABLE lab.cliente WITH compaction = {'class':'UnifiedCompactionStrategy','scaling_parameters':'T4'};"
 
 ```
@@ -2969,6 +3105,7 @@ Também é possível declarar valores diferentes por nível, o que permite ser e
 Devolva a tabela à estratégia padrão:
 
 ```sh
+# 10.b.5
 cqlsh -e "ALTER TABLE lab.cliente WITH compaction = {'class':'SizeTieredCompactionStrategy'};"
 
 ```
@@ -2988,6 +3125,7 @@ Uma diferença em relação à realidade: aqui a aplicação roda no mesmo conta
 A conexão vai para `127.0.0.1:9042`, a porta em que o nó atende:
 
 ```sh
+# 11.a.1
 python3 -c "
 from cassandra.cluster import Cluster
 cluster = Cluster(['127.0.0.1'])
@@ -3006,11 +3144,13 @@ conectado, versão: 5.0.9
 Baixe a aplicação:
 
 ```sh
+# 11.b.1
 curl -sSO https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo/main/driver_demo.py
 
 ```
 
 ```sh
+# 11.b.2
 python3 driver_demo.py
 
 ```
@@ -3048,11 +3188,13 @@ Como na seção 9, os valores de Q1 e Q2 devem coincidir com os seus; os lançam
 Você pode passar outra cliente e outra competência:
 
 ```sh
+# 11.b.3
 python3 driver_demo.py 2b16242a
 
 ```
 
 ```sh
+# 11.b.4
 python3 driver_demo.py 2b162060 2026-05
 
 ```
@@ -3136,6 +3278,7 @@ A tentativa natural seria filtrar pela cliente:
 > **Provoque este erro.**
 
 ```sh
+# 11.d.1
 python3 -c "
 from cassandra.cluster import Cluster
 session = Cluster(['127.0.0.1']).connect('infobarbank')
@@ -3157,6 +3300,7 @@ O `SELECT DISTINCT` sobre as colunas da partition key é válido porque percorre
 Uma consulta que devolve muitas linhas não vem de uma vez. O driver busca por páginas, e a iteração vai pedindo as seguintes conforme você consome:
 
 ```sh
+# 11.e.1
 python3 -c "
 from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
@@ -3191,6 +3335,7 @@ Isso não torna consulta ampla aceitável. Paginar uma varredura continua sendo 
 A tela de abertura do aplicativo precisa de Q1 e Q2 ao mesmo tempo. Executá-las em sequência soma as duas latências; disparadas juntas, custa a maior das duas:
 
 ```sh
+# 11.f.1
 python3 -c "
 from cassandra.cluster import Cluster
 session = Cluster(['127.0.0.1']).connect('infobarbank')
@@ -3248,11 +3393,13 @@ A cliente é a mesma pessoa. No banco ela é `2b162060`; na loja, **`CLI-000001`
 ### 12.a. Explorando
 
 ```sh
+# 12.a.1
 cqlsh -e "DESCRIBE KEYSPACE ecommerce;"
 
 ```
 
 ```sh
+# 12.a.2
 cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecommerce';"
 
 ```
@@ -3276,6 +3423,7 @@ cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecomm
 Descubra as competências disponíveis — aqui também os dados são relativos à data de execução:
 
 ```sh
+# 12.a.3
 cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM ecommerce.pedidos_por_periodo;"
 
 ```
