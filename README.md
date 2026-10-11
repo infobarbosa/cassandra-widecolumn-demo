@@ -231,7 +231,7 @@ O `-e` executa um comando e sai — é a forma usada em todo o laboratório. Mai
 
 ## 1. Por que o infobarBank usa Cassandra
 
-### Onde o Cassandra se aplica
+### 1.a. Onde o Cassandra se aplica
 
 Antes do caso deste laboratório, o quadro geral. O Cassandra não é um banco de uso geral: ele se destaca quando três necessidades aparecem juntas — **volume muito alto de escrita**, **latência baixa e previsível** e **distribuição** entre muitos servidores, às vezes em várias regiões, sem parar quando um deles cai.
 
@@ -250,7 +250,7 @@ Em escala, o caso mais citado é o da Apple, com mais de 75 mil nós e mais de 1
 
 O avesso importa tanto quanto. O Cassandra é a escolha errada quando a aplicação precisa de `JOIN` e de consultas ad hoc; quando precisa de transação ACID envolvendo várias linhas ou tabelas, como um sistema contábil; quando o volume é pequeno, e um banco relacional resolve com muito menos trabalho; ou quando não há equipe para operar um cluster distribuído.
 
-### O caso do infobarBank
+### 1.b. O caso do infobarBank
 
 O **infobarBank** é um banco digital. O coração dele — contas, cartões, transferências — roda num **core bancário** tradicional, um DB2 em mainframe, onde cada operação é uma transação com todas as garantias que dinheiro exige.
 
@@ -264,7 +264,7 @@ O app **escreve** no core. Um processo de **CDC** (*change data capture*) captur
 
 Este laboratório é a construção do lado direito desse desenho: a keyspace `infobarbank` que o aplicativo consulta.
 
-### Wide-column
+### 1.c. Wide-column
 
 O Cassandra é um banco **wide-column**: organiza os dados em linhas agrupadas por uma chave, em que cada linha tem colunas flexíveis — uma linha pode ter colunas que a vizinha não tem — e cada valor é endereçado por **linha, coluna e timestamp**. As linhas são distribuídas entre os vários servidores do cluster.
 
@@ -272,7 +272,7 @@ O próprio projeto se descreve assim, no [repositório oficial](https://github.c
 
 > Wide-column não é o mesmo que **colunar** (ClickHouse, DuckDB), apesar do nome parecido. A diferença está no disco, e você vai vê-la na seção 5.
 
-### O que o Cassandra oferece, e o que cobra
+### 1.d. O que o Cassandra oferece, e o que cobra
 
 | Característica | O que significa |
 |---|---|
@@ -288,7 +288,7 @@ A última linha é o preço das outras seis, e é por isso que o banco mantém o
 
 Há um segundo preço, mais sutil. Em sistemas distribuídos, quando a rede entre servidores falha, é preciso escolher entre responder sempre (**disponibilidade**) ou responder só com o dado garantidamente atual (**consistência**) — é o que diz o **teorema CAP**. O Cassandra escolhe disponibilidade: aceita, por um instante, que uma cópia esteja atrasada em relação à outra, e por isso se diz que ele tem **consistência eventual**. Quanto de consistência cada consulta exige é configurável, e é assunto do laboratório de cluster.
 
-### Como ele se encaixa numa arquitetura
+### 1.e. Como ele se encaixa numa arquitetura
 
 O desenho do infobarBank é um padrão de integração comum, mas não o único:
 
@@ -298,7 +298,7 @@ O desenho do infobarBank é um padrão de integração comum, mas não o único:
 
 É, há anos, o banco wide-column mais usado do mercado ([ranking DB-Engines](https://db-engines.com/en/ranking/wide+column+store)).
 
-### O que existe no nó
+### 1.f. O que existe no nó
 
 ```sh
 cqlsh -e "DESCRIBE KEYSPACES;"
@@ -323,7 +323,7 @@ Um cluster Cassandra é um conjunto de servidores — **nós** — que se organi
 
 Cada nó é dono de **faixas** de dados. Como o Cassandra decide qual dado vai para qual faixa é o assunto da seção 4; por ora basta saber que todo dado tem um endereço no ring, e que esse endereço vem da chave.
 
-### Coordinator e réplicas
+### 2.a. Coordinator e réplicas
 
 Guardar cada dado num nó só seria frágil: se o nó cai, o dado some. Por isso cada dado tem várias cópias, as **réplicas**, em nós diferentes. Quantas cópias é o **fator de replicação** (*replication factor*, RF).
 
@@ -333,7 +333,7 @@ O nó que recebe a requisição vira o **coordinator** daquela operação. Ele c
 
 > Nada disso se demonstra com um nó só, que é o que o seu ambiente tem. Nesta seção o desenho faz o papel da prática; replicação, falha de nós e consistência têm laboratório próprio, com um cluster de verdade.
 
-### Este nó
+### 2.b. Este nó
 
 O seu ambiente tem um nó só, mas ele já se apresenta como parte de um cluster.
 
@@ -352,7 +352,7 @@ cqlsh -e "SELECT cluster_name, release_version, cql_version, data_center, rack F
 
 `system.local` é a tabela em que o nó guarda o que sabe sobre si mesmo. Note que ele se declara em um **datacenter** (`datacenter1`) e em um **rack** (`RAC1`) — nomes que vieram da configuração do nó, preparada na imagem do laboratório. Um nó só, mas já se apresentando com endereço na topologia. Isso vai importar logo adiante, ao criar a keyspace.
 
-### O ponto de vista do operador
+### 2.c. O ponto de vista do operador
 
 ```sh
 nodetool status
@@ -376,7 +376,7 @@ Duas colunas para guardar: `Owns` diz que este nó responde por 100% dos dados, 
 
 > Se o `nodetool status` devolver `Server is not initialized yet, cannot run nodetool`, o serviço ainda está subindo. Espere alguns segundos e repita.
 
-### Keyspace: onde a replicação é decidida
+### 2.d. Keyspace: onde a replicação é decidida
 
 Uma `keyspace` é o repositório lógico das tabelas. Em outros bancos equivale a um *schema* ou *database*.
 
@@ -492,7 +492,7 @@ Nada disso se demonstra com um nó. Derrubar réplicas, acompanhar `nodetool rep
 
 ## 3. Sua primeira tabela
 
-### CQL e `cqlsh`
+### 3.a. CQL e `cqlsh`
 
 O Cassandra fala **CQL** (*Cassandra Query Language*), uma linguagem declarativa inspirada em SQL: `CREATE TABLE`, `INSERT`, `SELECT`, `UPDATE`, `DELETE` têm a cara que você conhece. A semelhança acaba aí — o que cada comando **pode** fazer é limitado pela forma como o dado está distribuído, e esta seção mostra o primeiro desses limites.
 
@@ -539,7 +539,7 @@ Os tipos mais usados neste laboratório e em modelos reais:
 
 A lista completa está na [documentação](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/types.html).
 
-### A tabela de clientes
+### 3.b. A tabela de clientes
 
 A primeira peça do aplicativo é o cadastro de clientes. Estas cinco pessoas você vai reencontrar na Parte 2, no sistema completo do banco — inclusive com o mesmo `id_cliente`:
 
@@ -733,7 +733,7 @@ A Gracimar desapareceu da consulta. Guarde esta frase, porque a seção 5 vai de
 
 Note também que apagar uma chave inexistente não deu erro. Faz sentido, pelo mesmo motivo do upsert: o Cassandra não vai ler antes de escrever só para conferir se havia algo lá.
 
-### A chave primária
+### 3.c. A chave primária
 
 Toda tabela no Cassandra tem uma **chave primária** (`PRIMARY KEY`), e em `lab.cliente` ela é uma coluna só: `id_cliente`. Você já viu o que ela decide:
 
@@ -774,7 +774,7 @@ O token é um inteiro de 64 bits, produzido pelo particionador `Murmur3Partition
 
 No desenho os tokens são números pequenos, para caber no olho. No seu nó, o token da Marivalda é `-754340186604780055` — o princípio é o mesmo, só a escala muda.
 
-### O ring deste nó
+### 4.a. O ring deste nó
 
 ```sh
 nodetool ring
@@ -805,11 +805,11 @@ Agora localize a Marivalda. O token dela é `-754340186604780055`, e no trecho a
 
 Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, cada um ficaria com aproximadamente metade das faixas, e cada partição passaria a ter um endereço não só no disco, mas na rede. Esse é o assunto do laboratório de cluster.
 
-### Partição e linha não são a mesma coisa
+### 4.b. Partição e linha não são a mesma coisa
 
 Em `lab.cliente`, cada partição tem exatamente uma linha, porque a `PRIMARY KEY` tem só a partition key. É o caso mais simples que existe, e também o menos interessante: uma partição de uma linha só não aproveita nada do que o Cassandra sabe fazer.
 
-O outro extremo — uma partição que cresce sem limite — é um problema de verdade, e existe uma técnica para controlá-lo. Ela tem seção própria: 9.4.
+O outro extremo — uma partição que cresce sem limite — é um problema de verdade, e existe uma técnica para controlá-lo. Ela tem seção própria: 9.f.
 
 O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 6 — e, na Parte 2, o centro de toda a modelagem. Por ora, guarde a distinção:
 
@@ -822,7 +822,7 @@ O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 6 — e, na Part
 
 ## 5. Do memtable ao disco
 
-### Colunar não é wide-column
+### 5.a. Colunar não é wide-column
 
 A seção 1 avisou que wide-column e colunar são coisas diferentes. A diferença é a forma como cada um grava no disco:
 
@@ -830,7 +830,7 @@ A seção 1 avisou que wide-column e colunar são coisas diferentes. A diferenç
 
 Um banco **colunar** guarda cada coluna separada, e por isso é ótimo para somar uma coluna de bilhões de linhas — o caso analítico. Um banco **wide-column** guarda a linha inteira junta, agrupada por partição, e por isso é ótimo para buscar tudo sobre uma chave — o caso do aplicativo. Nesta seção você vai abrir esse arquivo e ver exatamente o desenho da direita.
 
-### O caminho da escrita
+### 5.b. O caminho da escrita
 
 Quando você executou aqueles `INSERT`, o Cassandra fez duas coisas e só então respondeu:
 
@@ -845,7 +845,7 @@ Nesta seção vamos acompanhar o resto do caminho: da memtable até o disco, e d
 
 Os arquivos do Cassandra ficam em `/var/lib/cassandra`, e o seu usuário pode lê-los sem `sudo`: ele pertence ao grupo `cassandra`, dono desses diretórios.
 
-### Onde a tabela mora no disco
+### 5.c. Onde a tabela mora no disco
 
 ```sh
 DIR=$(ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1)
@@ -874,7 +874,7 @@ drwxr-x--- 3 cassandra cassandra 4096 Oct 10 10:03 ..
 
 **Vazio.** Você inseriu cinco clientes, atualizou um, apagou dois, e consultou tudo isso com sucesso — e não existe um único arquivo de dados. Onde está?
 
-### No commit log
+### 5.d. No commit log
 
 ```sh
 ls -la /var/lib/cassandra/commitlog/
@@ -930,7 +930,7 @@ Isso responde por que a escrita não fica mais lenta conforme você cria tabelas
 
 > **Durabilidade.** Se o processo morrer agora, a memtable se perde — mas o commit log não. Na volta, o Cassandra o relê e reconstrói a memtable. É esse arquivo que faz da escrita algo confirmado, não o arquivo de dados.
 
-### Ciclo 1 — o flush
+### 5.e. Ciclo 1 — o flush
 
 `nodetool flush` força a memtable a descer para o disco:
 
@@ -973,7 +973,7 @@ Oito arquivos, todos com o prefixo `nb-1-big`. Juntos eles formam **uma SSTable*
 | `Digest.crc32` | checksum do `Data.db` |
 | `TOC.txt` | a lista dos componentes acima |
 
-### O que existe dentro do `Data.db`
+### 5.f. O que existe dentro do `Data.db`
 
 São pouco mais de trezentos bytes. Cabe inteiro na tela:
 
@@ -1011,7 +1011,7 @@ Três coisas nesse despejo.
 
 > O `hexdump -C $DIR/nb-1-big-Data.db` produz uma saída equivalente, também disponível no ambiente. Usamos `od` porque ele existe em qualquer Linux, inclusive nos servidores em que você não pode instalar nada.
 
-### O tombstone
+### 5.g. O tombstone
 
 O hexadecimal mostra que a linha apagada está no arquivo. Para ver **o que** ela guarda, existe uma ferramenta melhor, que traduz a SSTable para JSON:
 
@@ -1045,7 +1045,7 @@ Aqui está a promessa da seção 3, cumprida. A Gracimar não foi apagada: o `DE
 
 Faz sentido, dado tudo o que você viu: apagar de verdade exigiria localizar o dado e reescrever o arquivo. Num sistema em que arquivo de dados nunca é modificado, apagar é mais uma escrita. O `SELECT` da seção 3 devolveu vazio porque a leitura encontrou o tombstone e o respeitou.
 
-### Ciclo 2 — arquivo de dados não se altera
+### 5.h. Ciclo 2 — arquivo de dados não se altera
 
 Insira mais duas clientes:
 
@@ -1091,7 +1091,7 @@ Isso tem uma consequência incômoda: a mesma partição pode ter pedaços em v�
 
 Mas o número de arquivos não pode crescer para sempre.
 
-### Ciclo 3 — compactação
+### 5.i. Ciclo 3 — compactação
 
 Vamos atualizar o sobrenome da Marivalda para algo bem grande, de modo que fique fácil de achar no disco:
 
@@ -1217,7 +1217,7 @@ sstabledump $DIR/nb-4-big-Data.db
 
 Uma única célula `sobrenome`, com o valor novo. E repare no detalhe: ela tem **timestamp próprio**, `19:16:32`, diferente do `liveness_info` da linha, `19:16:26`. O timestamp no Cassandra é por célula, não por linha — o que explica como a compactação resolveu o conflito sem precisar de nada além dos próprios arquivos: para cada célula, vence a escrita mais recente.
 
-### O tombstone que sobreviveu
+### 5.j. O tombstone que sobreviveu
 
 ```sh
 sstabledump $DIR/nb-4-big-Data.db | grep -B3 deletion_info
@@ -1250,7 +1250,7 @@ A razão está num cluster, não aqui. Imagine três réplicas e uma delas fora 
 
 O preço de um tombstone é ocupar espaço e ser lido junto com o dado vivo. Uma tabela que apaga muito acumula tombstones, e leituras que atravessam milhares deles ficam lentas — é um dos problemas de desempenho mais comuns em Cassandra, e vem de decisões de modelagem, não de configuração.
 
-### O que você deve conseguir explicar
+### 5.k. O que você deve conseguir explicar
 
 - Por que a escrita é rápida, e por que não fica mais lenta com o volume.
 - Por que o dado aparece na consulta antes de existir arquivo de dados, e o que garante que ele não se perca.
@@ -1266,7 +1266,7 @@ O preço de um tombstone é ocupar espaço e ser lido junto com o dado vivo. Uma
 
 A Marivalda tem **três cartões de crédito**. O aplicativo precisa listá-los na tela inicial, com o limite de cada um. Vamos guardar os cartões na sua bancada — e errar primeiro, do jeito que quase todo mundo erra.
 
-### A primeira tentativa
+### 6.a. A primeira tentativa
 
 Cada cartão pertence a uma cliente, e a tela busca os cartões **pela cliente**. Pela seção 3, a busca só funciona pela chave — então a chave seria `id_cliente`:
 
@@ -1312,7 +1312,7 @@ Esse é o primeiro dos três critérios que toda chave precisa passar, e o que m
 
 > **Unicidade.** A chave primária precisa identificar **uma** linha de verdade. Se duas coisas diferentes podem ter a mesma chave, uma vai sobrescrever a outra.
 
-### A segunda tentativa
+### 6.b. A segunda tentativa
 
 Se a chave precisa ser única, por que não o id do cartão? Cada cartão tem o seu, e nenhum se repete:
 
@@ -1348,9 +1348,9 @@ O mesmo erro da seção 3 — e com a tabela vazia: o Cassandra recusa pela form
 
 > A chave precisa ser única, mas ser única não basta. **A tabela é modelada para a consulta**: a chave começa por aquilo que a aplicação tem em mãos no momento da leitura.
 
-Essa tabela não está errada em si: ela serviria a outra tela, a de detalhe de um cartão, em que o id já veio da lista anterior. Você vai reencontrar essa forma na seção 9.1, na Q7. Para a tela de cartões, é preciso outra chave.
+Essa tabela não está errada em si: ela serviria a outra tela, a de detalhe de um cartão, em que o id já veio da lista anterior. Você vai reencontrar essa forma na seção 9.c, na Q7. Para a tela de cartões, é preciso outra chave.
 
-### A chave com duas partes
+### 6.c. A chave com duas partes
 
 A Marivalda é **uma** cliente com **vários** cartões. A chave precisa dizer as duas coisas: de quem é o cartão — o que a tela tem em mãos — e qual cartão é — o que distingue um do outro. Recrie a tabela:
 
@@ -1400,7 +1400,7 @@ Os três cartões, **e em ordem de `id_cartao`**, sem que você tenha pedido. As
 | **partition key** | `id_cliente`, a primeira | decide **em qual partição** — e em qual nó — a linha mora; é o que passa pela função hash da seção 4 |
 | **clustering key** | `id_cartao`, as seguintes | decide **em que ordem** as linhas ficam **dentro** da partição |
 
-### A partição no disco
+### 6.d. A partição no disco
 
 A ordem não é arrumação da consulta: é como o dado está gravado. Mande para o disco e olhe:
 
@@ -1449,9 +1449,9 @@ Uma `key`, três `rows`, cada uma com o seu `clustering`. É exatamente isto:
 
 Esta é uma **wide partition** — uma partição de múltiplas linhas —, e é dela que vem o nome do modelo *wide-column*: uma partição que guarda muitas linhas, ordenadas pela clustering key, lidas de uma vez numa única ida ao disco. A tela de cartões da Marivalda é **uma** leitura, numa partição, num nó — por mais cartões que ela tenha.
 
-Na `lab.cliente`, com chave de uma coluna, cada partição tinha uma linha só. Agora você conhece a outra ponta, e os dois extremos têm riscos: a partição de uma linha não aproveita nada do modelo; a partição que cresce sem limite é um problema que a Parte 2 vai medir. Você vai encontrar o termo *wide partition* também nesse sentido negativo, em alertas e artigos sobre partições grandes demais: é a mesma estrutura, quando cresce sem controle (seção 9.4).
+Na `lab.cliente`, com chave de uma coluna, cada partição tinha uma linha só. Agora você conhece a outra ponta, e os dois extremos têm riscos: a partição de uma linha não aproveita nada do modelo; a partição que cresce sem limite é um problema que a Parte 2 vai medir. Você vai encontrar o termo *wide partition* também nesse sentido negativo, em alertas e artigos sobre partições grandes demais: é a mesma estrutura, quando cresce sem controle (seção 9.f).
 
-### O que você deve conseguir explicar
+### 6.e. O que você deve conseguir explicar
 
 - Por que a primeira versão da tabela perdeu dois cartões sem dar erro.
 - Por que `id_cartao` sozinho, mesmo sendo único, não serve de chave para a tela de cartões.
@@ -1480,13 +1480,13 @@ No modelo relacional, a modelagem começa pelas entidades e seus relacionamentos
 
 As duas primeiras etapas são independentes; a terceira junta as duas. Vamos percorrê-las com o infobarBank.
 
-### O modelo conceitual
+### 7.a. O modelo conceitual
 
 ![Diagrama de entidades: Cliente possui Contas correntes e Cartões de crédito; cada conta e cada cartão geram Lançamentos](diagramas/10-modelo-conceitual.svg)
 
 Uma cliente tem contas e cartões; contas e cartões geram lançamentos. É o diagrama que você faria para qualquer banco relacional — e ele é necessário, porque é ele que diz que dados existem. Mas repare no que ele **não** diz: nada sobre o que o aplicativo mostra, em que ordem, a partir de quê. E é isso que decide a chave.
 
-### O fluxo aplicacional
+### 7.b. O fluxo aplicacional
 
 O fluxo aplicacional é a sequência de consultas que a aplicação faz ao banco — os seus **padrões de acesso**, ou *access patterns*. No infobarBank, cada consulta nasce de uma tela do aplicativo; em outros sistemas, pode ser uma chamada de API, um job noturno ou outro serviço. O método é o mesmo.
 
@@ -1509,7 +1509,7 @@ Duas regras de negócio completam as consultas:
 - **Q3**: os últimos três lançamentos **aprovados**; se o mês corrente não tiver nenhum, busca-se o mês anterior.
 - **Q4**: o extrato mostra **um mês por vez** — a tela tem um seletor de mês, não um campo livre de datas. Na seção 9 você vai ver que essa decisão de tela é consequência do modelo de dados.
 
-### A inversão em relação ao relacional
+### 7.c. A inversão em relação ao relacional
 
 Aquela tabela acima não é documentação do modelo: **é o método.** Ela tem nome — **modelagem orientada a consultas**, ou *query-first design* — e a inversão em relação ao que você aprendeu em relacional é literal:
 
@@ -1520,7 +1520,7 @@ Aquela tabela acima não é documentação do modelo: **é o método.** Ela tem 
 | As consultas | se adaptam ao modelo, com `JOIN` | **definem** o modelo |
 | Consulta nova | quase sempre é só SQL novo | pode ser tabela nova, carga de dados e deploy |
 
-A consequência prática incomoda quem vem do relacional: **não se modela em Cassandra sem saber as consultas.** Um diagrama de entidades correto não produz um modelo Cassandra utilizável, porque a informação que decide a `PRIMARY KEY` não está no diagrama. O que decide é *o que a aplicação tem em mãos no momento da leitura* — e isso está no fluxo aplicacional, nos *access patterns*, não no modelo conceitual. Você vai ver isso em 9.1, quando faltar um `id_lancamento`: a chave da Q7 só faz sentido porque a tela anterior entrega o id.
+A consequência prática incomoda quem vem do relacional: **não se modela em Cassandra sem saber as consultas.** Um diagrama de entidades correto não produz um modelo Cassandra utilizável, porque a informação que decide a `PRIMARY KEY` não está no diagrama. O que decide é *o que a aplicação tem em mãos no momento da leitura* — e isso está no fluxo aplicacional, nos *access patterns*, não no modelo conceitual. Você vai ver isso em 9.c, quando faltar um `id_lancamento`: a chave da Q7 só faz sentido porque a tela anterior entrega o id.
 
 Daí a ordem de trabalho, que é a desta seção:
 
@@ -1528,9 +1528,9 @@ Daí a ordem de trabalho, que é a desta seção:
 fluxo aplicacional  →  uma consulta por access pattern  →  o que a aplicação tem em mãos  →  PRIMARY KEY  →  tabela
 ```
 
-E o preço do método, que é honesto declarar agora: **a consulta que ninguém previu não tem tabela.** Nenhuma das doze responde "quais os dez maiores lançamentos da cliente no mês" — não porque seja difícil, mas porque essa tela não existia quando o modelo foi feito. Você vai reencontrar essa pergunta no desafio da seção 12, e as três saídas para ela são as da seção 10 e da seção 9.7: modelar mais uma tabela, aceitar um índice SAI, ou varrer com `ALLOW FILTERING`. Nenhuma é grátis.
+E o preço do método, que é honesto declarar agora: **a consulta que ninguém previu não tem tabela.** Nenhuma das doze responde "quais os dez maiores lançamentos da cliente no mês" — não porque seja difícil, mas porque essa tela não existia quando o modelo foi feito. Você vai reencontrar essa pergunta no desafio da seção 12, e as três saídas para ela são as da seção 10 e da seção 9.i: modelar mais uma tabela, aceitar um índice SAI, ou varrer com `ALLOW FILTERING`. Nenhuma é grátis.
 
-### Do fluxo às tabelas
+### 7.d. Do fluxo às tabelas
 
 O resultado da modelagem está carregado no seu ambiente:
 
@@ -1570,21 +1570,21 @@ Doze tabelas para sete consultas. Cada uma existe por causa de um access pattern
 | `lancamentos_por_produto` | Q5 |
 | `lancamentos_por_tipo` | Q6 |
 | `lancamentos_detalhe` | Q7 |
-| `lancamentos_cartao_credito` | a primeira tentativa de extrato, com uma tabela só para todos os filtros — e o motivo pelo qual não basta (seção 9.5) |
+| `lancamentos_cartao_credito` | a primeira tentativa de extrato, com uma tabela só para todos os filtros — e o motivo pelo qual não basta (seção 9.g) |
 
 Quatro tabelas de cliente, cinco de lançamento com os mesmos dados. A próxima seção explica por que um modelo Cassandra repete tanto.
 
-### Os três critérios da chave
+### 7.e. Os três critérios da chave
 
 Toda chave do modelo lógico passa por três perguntas. A primeira você já conhece da seção 6:
 
 | Critério | Pergunta | Onde você vê |
 |---|---|---|
-| **Unicidade** | A chave identifica uma linha só? | seção 6 (cartões) e seção 9.2 (CPF) |
-| **Ordenação** | As linhas vêm na ordem que a consulta pede? | seção 9.5 |
-| **Distribuição** | A partição tem tamanho limitado? | seção 9.4 |
+| **Unicidade** | A chave identifica uma linha só? | seção 6 (cartões) e seção 9.d (CPF) |
+| **Ordenação** | As linhas vêm na ordem que a consulta pede? | seção 9.g |
+| **Distribuição** | A partição tem tamanho limitado? | seção 9.f |
 
-### O que você deve conseguir explicar
+### 7.f. O que você deve conseguir explicar
 
 - As quatro etapas da metodologia, e o que cada uma produz.
 - O que o diagrama de entidades não sabe informar, e onde essa informação está.
@@ -1634,7 +1634,7 @@ A razão está nas seções 2 e 4. Um `JOIN` combina linhas de dois conjuntos, e
 
 Então **como um sistema real resolve isso?**
 
-### O mesmo dado, quatro vezes
+### 8.a. O mesmo dado, quatro vezes
 
 A seção 7 mostrou quatro tabelas de cliente: `cliente`, `cliente_por_cpf`, `cliente_por_email`, `cliente_por_telefone`. Parecem quatro tabelas diferentes. Procure a Marivalda em cada uma:
 
@@ -1670,7 +1670,7 @@ Os quatro comandos devolvem exatamente a mesma linha:
 
 Isso tem nome.
 
-### Desnormalização
+### 8.b. Desnormalização
 
 **Desnormalização** é gravar o mesmo dado em mais de um lugar para que cada consulta encontre tudo o que precisa num só lugar. É o oposto da normalização que você aprendeu em modelagem relacional, onde cada fato existe uma vez e as consultas o remontam com `JOIN`.
 
@@ -1764,7 +1764,7 @@ Vale separar as duas repetições desta base, porque só uma delas é realista:
 
 Ou seja: não tome o CPF repetido como retrato de produção. Tome-o como o que ele é — a chance de ver, em dado real, o que acontece quando a premissa de unicidade de uma partition key é falsa. O que se leva daqui é o hábito: **antes de eleger uma coluna como partition key, prove que ela é única na sua base**, porque o banco não vai reclamar depois.
 
-E guarde a pergunta, porque a resposta está em 9.2: se o CPF se repete, por que as trinta pessoas com CPF repetido **não** se sobrescreveram? Quem modelou a `cliente_por_cpf` já contava com isso.
+E guarde a pergunta, porque a resposta está em 9.d: se o CPF se repete, por que as trinta pessoas com CPF repetido **não** se sobrescreveram? Quem modelou a `cliente_por_cpf` já contava com isso.
 
 Consequência operacional, para não te confundir mais adiante: consultar `cliente_por_cpf` por um desses CPFs devolve **várias pessoas**. O CPF da Marivalda é único, e é o usado em todos os exemplos deste laboratório — assim como as outras seis clientes com movimento. Se você trocar de cliente por conta própria, confira antes.
 
@@ -1877,7 +1877,7 @@ A regra, e ela erra para os dois lados:
 
 | Erro | Sintoma |
 |---|---|
-| **Tabelas de menos** | a consulta cai em `ALLOW FILTERING`, varredura, latência que cresce com a base (seção 9.7) |
+| **Tabelas de menos** | a consulta cai em `ALLOW FILTERING`, varredura, latência que cresce com a base (seção 9.i) |
 | **Tabelas demais** | amplificação de escrita e superfície de bug de sincronia — a falha que você acabou de provocar, multiplicada |
 
 Duas perguntas resolvem a maioria dos casos:
@@ -1893,13 +1893,13 @@ Agora que a técnica tem nome, ela fica visível em quase toda tabela que você 
 |---|---|
 | `infobarbank.cliente` + `cliente_por_cpf` + `cliente_por_email` + `cliente_por_telefone` | login por id, por CPF, por e-mail, por telefone |
 | `ecommerce.cliente` + `cliente_por_cpf` + `cliente_por_email` | o mesmo, na loja |
-| `lancamentos_detalhe` × as quatro tabelas de lançamento | a tela de detalhe e as telas de lista (9.1 e 9.5) |
-| `lancamentos_por_periodo` + `_por_produto` + `_por_status` + `_por_tipo` | os mesmos lançamentos, quatro filtros (9.5) |
+| `lancamentos_detalhe` × as quatro tabelas de lançamento | a tela de detalhe e as telas de lista (9.c e 9.g) |
+| `lancamentos_por_periodo` + `_por_produto` + `_por_status` + `_por_tipo` | os mesmos lançamentos, quatro filtros (9.g) |
 | `pedido_detalhe` × as tabelas de pedido do `ecommerce` | idem, na loja |
 
 Não existe uma única tabela do `infobarbank` cujo conteúdo não apareça em outra. **É a regra, não a exceção.**
 
-### O que você deve conseguir explicar
+### 8.c. O que você deve conseguir explicar
 
 - Por que o CQL não tem `JOIN`, em termos de onde os dados estão fisicamente.
 - O que é desnormalização, e por que em Cassandra ela é o padrão e não a exceção.
@@ -1925,7 +1925,7 @@ O modelo lógico do infobarBank tem uma tabela por consulta. Na notação usada 
 
 Nesta seção vamos percorrer cada forma de chave dessa tabela — coluna única, composta, partition key de várias colunas — com a consulta que a motivou, e testar os três critérios da seção 7.
 
-### Escolhendo a competência
+### 9.a. Escolhendo a competência
 
 Os lançamentos são gerados em relação à data de execução, então as competências disponíveis no seu ambiente são outras. Descubra:
 
@@ -1980,7 +1980,7 @@ Não é defeito do laboratório: é o que acontece em qualquer base de produçã
 
 Nos exemplos a seguir aparece `2026-06`; troque por uma competência intermediária do seu ambiente.
 
-### O que é igual e o que é diferente no seu ambiente
+### 9.b. O que é igual e o que é diferente no seu ambiente
 
 Vale saber antes de comparar resultados:
 
@@ -1991,7 +1991,7 @@ Vale saber antes de comparar resultados:
 
 Ou seja: os resultados de Q1 e Q2 abaixo devem coincidir com os seus. Os de Q3 a Q7, não — a forma da resposta é a mesma, os valores são outros.
 
-### 9.1 Partition key de coluna única
+### 9.c. Partition key de coluna única
 
 O caso mais simples, o mesmo da sua `lab.cliente`: a `PRIMARY KEY` tem uma coluna, que é a partition key. Uma partição, uma linha.
 
@@ -2006,7 +2006,7 @@ cqlsh -e "DESCRIBE TABLE infobarbank.cliente;"
     id_cliente text PRIMARY KEY,
 ```
 
-Repare **onde** essa declaração aparece: na própria linha da coluna. É a forma que o CQL usa quando a chave tem uma coluna só. Da seção 9.2 em diante você vai ver a outra forma, uma cláusula `PRIMARY KEY (...)` separada, no fim da lista de colunas — ela é obrigatória assim que a chave tem mais de uma coluna, porque aí a **ordem** das colunas importa e não haveria como expressá-la linha por linha.
+Repare **onde** essa declaração aparece: na própria linha da coluna. É a forma que o CQL usa quando a chave tem uma coluna só. Da seção 9.d em diante você vai ver a outra forma, uma cláusula `PRIMARY KEY (...)` separada, no fim da lista de colunas — ela é obrigatória assim que a chave tem mais de uma coluna, porque aí a **ordem** das colunas importa e não haveria como expressá-la linha por linha.
 
 Recupere a Marivalda:
 
@@ -2061,7 +2061,7 @@ LIMIT 5;"
 
 Os seus cinco ids são outros. **Escolha qualquer um deles** e siga com ele nos comandos abaixo.
 
-> Repare que não há `ORDER BY` e ainda assim vieram os cinco mais recentes. A ordenação já está gravada no disco — é assunto de 9.2, e é o que faz o `LIMIT` ser barato aqui.
+> Repare que não há `ORDER BY` e ainda assim vieram os cinco mais recentes. A ordenação já está gravada no disco — é assunto de 9.d, e é o que faz o `LIMIT` ser barato aqui.
 
 Agora a Q7, com o id que você escolheu:
 
@@ -2085,7 +2085,7 @@ E repare no que a `lancamentos_detalhe` tem de diferente das outras tabelas de l
 
 Duas leituras, duas partições, dois nós possíveis num cluster — e é assim que a tela funciona. Guarde o par: **uma consulta entrega a lista, outra entrega o detalhe, e o id é o que passa de uma para a outra.**
 
-### 9.2 Partition key mais clustering key
+### 9.d. Partition key mais clustering key
 
 Agora a `PRIMARY KEY` tem duas partes. A **Q1**, dados da conta:
 
@@ -2174,7 +2174,7 @@ Quatro pessoas, uma partição, quatro linhas ordenadas por `id_cliente`. A tela
 
 > Os quatro têm o mesmo sobrenome, o que faz o resultado parecer uma família e a duplicidade parecer plausível. Não é: são quatro personas geradas em sequência a partir do mesmo sobrenome, e CPF continua sendo único por lei. Vale como aviso sobre dado sintético — ele às vezes é errado de um jeito que parece certo.
 
-### 9.3 Partition key de múltiplas colunas
+### 9.e. Partition key de múltiplas colunas
 
 A **Q4**, extrato por período, é onde o modelo fica interessante:
 
@@ -2219,7 +2219,7 @@ Duas coisas nesse resultado.
 
 Falta explicar a decisão mais importante dessa chave: **por que `competencia` está ali**. Ela não identifica o lançamento, não é pedida pela regra de negócio e obriga toda consulta a informar um mês. É uma coluna que existe por um motivo de engenharia — e esse motivo tem nome. É a próxima seção.
 
-### 9.4 Bucketing: quebrando a partição que não para de crescer
+### 9.f. Bucketing: quebrando a partição que não para de crescer
 
 Imagine a chave sem a competência: `PRIMARY KEY ((id_cliente), data_hora, id_lancamento)`. Fica mais simples, e a consulta por período fica melhor — um intervalo de datas qualquer, sem precisar saber de mês nenhum.
 
@@ -2512,7 +2512,7 @@ cqlsh -e "DROP TABLE lab.lancamento_sem_bucket;"
 
 ```
 
-### 9.5 A mesma partição, quatro ordenações
+### 9.g. A mesma partição, quatro ordenações
 
 Q3, Q5 e Q6 pedem os mesmos lançamentos da mesma cliente no mesmo mês. Só a forma de filtrar muda. A tentação é atender todas com uma tabela só — e o banco tentou. É a `lancamentos_cartao_credito`:
 
@@ -2674,7 +2674,7 @@ cqlsh -e "DROP TABLE lab.extrato_por_uuid;"
 
 ```
 
-### 9.6 Os erros que ensinam
+### 9.h. Os erros que ensinam
 
 Quatro tentativas que o Cassandra recusa. Cada mensagem diz algo diferente sobre a chave primária.
 
@@ -2744,9 +2744,9 @@ InvalidRequest: ... "Order by is currently only supported on the clustered colum
 of the PRIMARY KEY, got valor"
 ```
 
-O Cassandra não ordena em tempo de consulta: ele **entrega** na ordem em que gravou. Querer os lançamentos por valor não é uma consulta diferente — é uma **tabela** diferente, com `valor` como clustering key. Foi exatamente esse raciocínio que produziu as quatro tabelas de 9.5.
+O Cassandra não ordena em tempo de consulta: ele **entrega** na ordem em que gravou. Querer os lançamentos por valor não é uma consulta diferente — é uma **tabela** diferente, com `valor` como clustering key. Foi exatamente esse raciocínio que produziu as quatro tabelas de 9.g.
 
-### 9.7 O que o `ALLOW FILTERING` faz
+### 9.i. O que o `ALLOW FILTERING` faz
 
 O erro sugere `ALLOW FILTERING` desde a seção 3. Vamos ver o que ele custa, com o `TRACING` ligado.
 
@@ -2784,7 +2784,7 @@ O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas r
 
 > `ALLOW FILTERING` tem lugar legítimo: consulta administrativa pontual, exploração de dados, tabela pequena e limitada por natureza. O que ele não é: solução para uma consulta que a aplicação faz a cada requisição.
 
-### O que você deve conseguir explicar
+### 9.j. O que você deve conseguir explicar
 
 - Os três critérios da chave, e um exemplo de chave que falha em cada um.
 - A diferença entre partition key composta e múltiplas clustering keys — inclusive quais colunas cada uma exige na consulta.
@@ -2799,7 +2799,7 @@ O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas r
 
 Duas novidades da versão 5 mexem exatamente no que você viu nas seções 5 e 9.
 
-### SAI — Storage Attached Index
+### 10.a. SAI — Storage Attached Index
 
 Volte à consulta que falhou na seção 3:
 
@@ -2890,7 +2890,7 @@ Index query accessed memtable indexes, 1 SSTable index, and 1 segment,
 post-filtered 1 row in 1 partition, and took 1074 microseconds.
 ```
 
-A boa notícia está no fim: **1 linha lida, 1 partição** — nada de varredura sequencial como no `ALLOW FILTERING` da seção 9.7.
+A boa notícia está no fim: **1 linha lida, 1 partição** — nada de varredura sequencial como no `ALLOW FILTERING` da seção 9.i.
 
 A notícia importante está no meio: **`Submitting range requests on 17 ranges`**. O índice SAI é **local a cada nó**: ele sabe onde está o dado *dentro* do nó, mas não sabe em qual nó procurar. Então o coordinator pergunta a todos.
 
@@ -2913,7 +2913,7 @@ cqlsh -e "DROP INDEX lab.cliente_nome_sai;"
 
 ```
 
-### UCS — Unified Compaction Strategy
+### 10.b. UCS — Unified Compaction Strategy
 
 Na seção 5 você viu três SSTables virarem uma. A estratégia que decidiu isso apareceu no `DESCRIBE TABLE`:
 
@@ -2974,7 +2974,7 @@ cqlsh -e "ALTER TABLE lab.cliente WITH compaction = {'class':'SizeTieredCompacti
 
 O fluxo Q1 a Q7 é a sequência de telas de um aplicativo. Até aqui você o executou digitando `cqlsh`. Vamos executá-lo como o aplicativo faz, com o driver Python oficial.
 
-### Preparando o ambiente
+### 11.a. Preparando o ambiente
 
 O driver oficial do Cassandra para Python, o `cassandra-driver`, já está instalado no ambiente — é o mesmo driver que o `cqlsh` usa por baixo. Não há `venv` nem `pip install` a fazer.
 
@@ -2996,7 +2996,7 @@ cluster.shutdown()"
 conectado, versão: 5.0.9
 ```
 
-### O fluxo aplicacional
+### 11.b. O fluxo aplicacional
 
 Baixe a aplicação:
 
@@ -3054,7 +3054,7 @@ python3 driver_demo.py 2b162060 2026-05
 
 > Sete das cinquenta clientes têm conta, cartões e lançamentos: `2b162060`, `2b16242a`, `2b16256a`, `2b16353c`, `2b1636ae`, `2b16396a` e `2b163bcc` — as mesmas personas da seção 3. Para as outras, o script avisa que não há lançamentos e encerra.
 
-### Leia o código
+### 11.c. Leia o código
 
 Abra o `driver_demo.py`. Três decisões nele merecem atenção.
 
@@ -3118,7 +3118,7 @@ No `cqlsh`, `data_hora >= '2026-06-19'` funciona: ele converte o literal. No dri
 TypeError: DateType arguments must be a datetime, date, or timestamp
 ```
 
-### O erro da seção 9, agora em Python
+### 11.d. O erro da seção 9, agora em Python
 
 Repare em como o script descobre a competência:
 
@@ -3143,11 +3143,11 @@ cassandra.InvalidRequest: Error from server: code=2200 [Invalid query]
 message="Cannot execute this query as it might involve data filtering..."
 ```
 
-É o primeiro erro de 9.6 — partition key composta pela metade — agora como exceção Python. **O driver não protege de modelagem errada**, e não existe camada de abstração que resolva isso: as regras da seção 9 valem em qualquer linguagem.
+É o primeiro erro de 9.h — partition key composta pela metade — agora como exceção Python. **O driver não protege de modelagem errada**, e não existe camada de abstração que resolva isso: as regras da seção 9 valem em qualquer linguagem.
 
 O `SELECT DISTINCT` sobre as colunas da partition key é válido porque percorre o índice de partições, não os dados. Mas continua sendo conveniência de laboratório: percorrer todas as partições não escala. Um aplicativo de banco não descobre a competência — ele a recebe do seletor de mês da tela.
 
-### Paginação
+### 11.e. Paginação
 
 Uma consulta que devolve muitas linhas não vem de uma vez. O driver busca por páginas, e a iteração vai pedindo as seguintes conforme você consome:
 
@@ -3179,9 +3179,9 @@ Onze páginas para mil linhas em páginas de cem — a última vem vazia. O Cass
 
 O `fetch_size` padrão do driver é 5000. O que ele protege é a memória do **cliente** e o tempo de resposta do **coordinator**: sem paginação, uma consulta ampla obrigaria o nó a montar o resultado inteiro antes de enviar qualquer coisa.
 
-Isso não torna consulta ampla aceitável. Paginar uma varredura continua sendo uma varredura — a seção 9.7 vale igual. Paginação existe para o caso em que **uma partição legítima** tem muitas linhas.
+Isso não torna consulta ampla aceitável. Paginar uma varredura continua sendo uma varredura — a seção 9.i vale igual. Paginação existe para o caso em que **uma partição legítima** tem muitas linhas.
 
-### Assíncrono
+### 11.f. Assíncrono
 
 A tela de abertura do aplicativo precisa de Q1 e Q2 ao mesmo tempo. Executá-las em sequência soma as duas latências; disparadas juntas, custa a maior das duas:
 
@@ -3207,20 +3207,20 @@ cartões: ['007c2c1c', '897199aa', '9a748c3c']
 
 Esse padrão é o que torna viável o modelo da Parte 2. Uma tela que precisa de dados de cinco tabelas faz cinco leituras pontuais em paralelo, e isso é mais rápido e mais previsível do que um `JOIN` de cinco tabelas em qualquer banco relacional. **A desnormalização da seção 8 não é um preço que se paga; é o que permite a leitura ser trivial.**
 
-### Como estragar um projeto com Cassandra
+### 11.g. Como estragar um projeto com Cassandra
 
 Tudo o que você viu até aqui cabe numa lista curta de erros. São os que mais aparecem em projeto real, e cada um tem uma seção deste laboratório como antídoto:
 
 | Erro | Por que dá errado | Onde você viu |
 |---|---|---|
 | **Usar Cassandra porque outro time usou** | O banco é ótimo para um padrão de acesso e ruim para os outros. A escolha vem do problema, não da moda. | seção 1 |
-| **Usar como banco relacional** | Normalizar e esperar `JOIN` leva a consultas que o Cassandra recusa, ou a `ALLOW FILTERING` em produção. | seções 8 e 9.7 |
+| **Usar como banco relacional** | Normalizar e esperar `JOIN` leva a consultas que o Cassandra recusa, ou a `ALLOW FILTERING` em produção. | seções 8 e 9.i |
 | **Começar pelo modelo lógico ou físico** | Sem o fluxo de telas, a chave é um chute, e chave errada só se corrige com tabela nova e migração de dados. | seção 7 |
-| **Deixar a infraestrutura para depois** | Fator de replicação, datacenters e tamanho de partição são decididos na keyspace e na chave, no primeiro dia. | seções 2 e 9.4 |
+| **Deixar a infraestrutura para depois** | Fator de replicação, datacenters e tamanho de partição são decididos na keyspace e na chave, no primeiro dia. | seções 2 e 9.f |
 | **Pôr um balanceador de carga na frente** | O driver já sabe qual nó tem o dado (`TokenAwarePolicy`). Um balanceador esconde isso e acrescenta um salto a cada consulta. | acima, em "Leia o código" |
-| **Desprezar monitoração e manutenção** | Partições grandes, tombstones acumulados e compactação atrasada não dão erro: só deixam tudo mais lento, até parar. | seções 5 e 9.4 |
+| **Desprezar monitoração e manutenção** | Partições grandes, tombstones acumulados e compactação atrasada não dão erro: só deixam tudo mais lento, até parar. | seções 5 e 9.f |
 
-### O que você deve conseguir explicar
+### 11.h. O que você deve conseguir explicar
 
 - Por que prepared statement é questão de desempenho, e não só de segurança.
 - O que `TokenAwarePolicy` faz com o resultado de `token(id_cliente)`.
@@ -3240,7 +3240,7 @@ Repare que a regra não diz "o cliente". Diz *o que a aplicação tem*. Às veze
 
 A cliente é a mesma pessoa. No banco ela é `2b162060`; na loja, **`CLI-000001`** — mesmo nome, mesmo CPF, id próprio de cada sistema. É por isso que as duas empresas precisam de uma tabela de acesso por CPF.
 
-### Explorando
+### 12.a. Explorando
 
 ```sh
 cqlsh -e "DESCRIBE KEYSPACE ecommerce;"
@@ -3277,7 +3277,7 @@ cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM ecommerce.pedidos_por_per
 
 Use uma competência **fechada** com bom volume. Nos exemplos deste desafio aparece `2026-05`; troque pela que existir no seu ambiente.
 
-### As consultas
+### 12.b. As consultas
 
 Escreva, para cada item, a consulta CQL que o responde. Todas as respostas existem: **não é necessário criar nenhuma tabela**.
 
@@ -3294,7 +3294,7 @@ Escreva, para cada item, a consulta CQL que o responde. Todas as respostas exist
 | **Q9'** | *(analítica)* Exibir todas as vendas do estado de `SP` em um dia específico. |
 | **Q10'** | *(analítica)* Exibir todas as vendas de `NOTEBOOK` em um dia específico. |
 
-### O que você deve conseguir responder
+### 12.c. O que você deve conseguir responder
 
 Para cada consulta, três coisas:
 
@@ -3312,7 +3312,7 @@ Use estas perguntas para conferir cada resposta:
 
 > Se alguma resposta sua precisar de `ALLOW FILTERING` ou de `ORDER BY`, ela está usando a tabela errada. Releia a seção 9.
 
-### Duas perguntas para discutir em sala
+### 12.d. Duas perguntas para discutir em sala
 
 Não precisam de código.
 
