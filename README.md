@@ -231,6 +231,27 @@ O `-e` executa um comando e sai — é a forma usada em todo o laboratório. Mai
 
 ## 1. Por que o infobarBank usa Cassandra
 
+### Onde o Cassandra se aplica
+
+Antes do caso deste laboratório, o quadro geral. O Cassandra não é um banco de uso geral: ele se destaca quando três necessidades aparecem juntas — **volume muito alto de escrita**, **latência baixa e previsível** e **distribuição** entre muitos servidores, às vezes em várias regiões, sem parar quando um deles cai.
+
+![Os três traços comuns, volume de escrita, latência previsível e distribuição, e os casos de uso: IoT, eventos e logs, mensageria, catálogo, perfil e sessão, fraude, e a leitura separada do sistema transacional; embaixo, quando não usar](diagramas/00-casos-de-uso.svg)
+
+| Caso de uso | O que o Cassandra resolve | Exemplo |
+|---|---|---|
+| **IoT e telemetria** | leituras de sensores gravadas sem parar e consultadas por dispositivo e período | — |
+| **Eventos e logs** | registros que só são acrescentados, nunca alterados, em volume que um banco relacional não absorve | — |
+| **Mensageria e histórico** | caixa de entrada, chat, notificações: escrita constante, leitura pela conversa ou pelo usuário | — |
+| **Catálogo e inventário** | dados de produto replicados perto de cada região, com leitura rápida em todas | eBay |
+| **Perfil, sessão e personalização** | leitura pontual pelo id do usuário, em qualquer região, com o mesmo tempo de resposta | — |
+| **Fraude e monitoramento** | eventos de transação gravados e consultados em tempo real | Visa; Capital One, com 21 mil transações por segundo e 99,99% de disponibilidade |
+
+Em escala, o caso mais citado é o da Apple, com mais de 75 mil nós e mais de 10 PB de dados ([Neontri](https://neontri.com/blog/apache-cassandra-use-cases/)). Números como esses vêm de apresentações públicas e envelhecem rápido; o que importa é a ordem de grandeza.
+
+O avesso importa tanto quanto. O Cassandra é a escolha errada quando a aplicação precisa de `JOIN` e de consultas ad hoc; quando precisa de transação ACID envolvendo várias linhas ou tabelas, como um sistema contábil; quando o volume é pequeno, e um banco relacional resolve com muito menos trabalho; ou quando não há equipe para operar um cluster distribuído.
+
+### O caso do infobarBank
+
 O **infobarBank** é um banco digital. O coração dele — contas, cartões, transferências — roda num **core bancário** tradicional, um DB2 em mainframe, onde cada operação é uma transação com todas as garantias que dinheiro exige.
 
 O problema é o aplicativo. Milhões de clientes abrem o app ao longo do dia, e cada abertura pede saldo, últimos lançamentos e limite dos cartões. Se cada uma dessas leituras batesse no core, o sistema que precisa processar transferências passaria o dia respondendo a quem só quer olhar o extrato.
@@ -267,9 +288,9 @@ A última linha é o preço das outras seis, e é por isso que o banco mantém o
 
 Há um segundo preço, mais sutil. Em sistemas distribuídos, quando a rede entre servidores falha, é preciso escolher entre responder sempre (**disponibilidade**) ou responder só com o dado garantidamente atual (**consistência**) — é o que diz o **teorema CAP**. O Cassandra escolhe disponibilidade: aceita, por um instante, que uma cópia esteja atrasada em relação à outra, e por isso se diz que ele tem **consistência eventual**. Quanto de consistência cada consulta exige é configurável, e é assunto do laboratório de cluster.
 
-### Onde mais o Cassandra aparece
+### Como ele se encaixa numa arquitetura
 
-O desenho do infobarBank é um padrão comum, mas não o único:
+O desenho do infobarBank é um padrão de integração comum, mas não o único:
 
 - **Leitura separada da escrita** (*CQRS*): o caso acima — um sistema transacional grava, e o Cassandra serve as leituras.
 - **Integração por eventos**: CDC e Kafka alimentando o Cassandra a partir de vários bancos de origem — PostgreSQL, MySQL, SQL Server, Oracle.
@@ -3339,6 +3360,7 @@ Cada referência indica as seções deste roteiro a que ela se liga.
 |---|---|
 | M. Kleppmann. [*Designing Data-Intensive Applications*](https://dataintensive.net/). O'Reilly. Replicação, particionamento e motores de armazenamento, comparando vários bancos. | 1, 2, 5, 8 |
 | DataStax. [*Data Modeling by Example*](https://www.datastax.com/learn/data-modeling-by-example). Casos de modelagem resolvidos passo a passo. | 7, 9 |
+| Neontri. [*Apache Cassandra Use Cases*](https://neontri.com/blog/apache-cassandra-use-cases/). Casos de uso por setor, com exemplos de empresas e de quando não usar. | 1 |
 | [Ranking DB-Engines de bancos wide-column](https://db-engines.com/en/ranking/wide+column+store) | 1 |
 | [Certificações DataStax para Cassandra](https://www.datastax.com/dev/certifications) | — |
 

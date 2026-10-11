@@ -9,6 +9,7 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 
 | Arquivo | Seção |
 |---|---|
+| `00-casos-de-uso` | 1 |
 | `01-arquitetura-infobarbank` | 1 |
 | `02-coordinator-replicas` | 2 |
 | `03-multi-datacenter` | 2 |
