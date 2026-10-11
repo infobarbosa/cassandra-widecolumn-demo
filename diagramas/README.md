@@ -14,6 +14,7 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 | `02-coordinator-replicas` | 2 |
 | `03-multi-datacenter` | 2 |
 | `04-ring-token` | 4 |
+| `04b-quem-e-quem` | 4 |
 | `05-colunar-vs-widecolumn` | 5 |
 | `06-caminho-de-escrita` | 5 |
 | `07-compactacao` | 5 |

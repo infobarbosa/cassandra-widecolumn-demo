@@ -811,12 +811,17 @@ Em `lab.cliente`, cada partição tem exatamente uma linha, porque a `PRIMARY KE
 
 O outro extremo — uma partição que cresce sem limite — é um problema de verdade, e existe uma técnica para controlá-lo. Ela tem seção própria: 9.f.
 
-O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 6 — e, na Parte 2, o centro de toda a modelagem. Por ora, guarde a distinção:
+O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 6 — e, na Parte 2, o centro de toda a modelagem. Antes disso, vale organizar quem é quem numa chave. Saia do banco por um instante e pense numa tabela de pedidos guardada como as pastas de um data lake, uma pasta por dia:
 
-| | |
-|---|---|
-| **partition key** | decide **em qual partição** — e, num cluster, em qual nó — a linha mora |
-| **clustering key** | decide **em que ordem** as linhas ficam dentro da partição |
+![Tabela pedidos_por_dia com PRIMARY KEY (dia, hora, id_pedido), desenhada como três pastas de data lake, uma por dia: uma linha destacada é a primary key (corte horizontal), uma pasta inteira é a partição (corte vertical) e uma seta mostra a ordem das linhas dentro da pasta (clustering key)](diagramas/04b-quem-e-quem.svg)
+
+| | Corte | Papel |
+|---|---|---|
+| **primary key** | horizontal | identifica uma linha, e só uma: é a chave inteira, `dia + hora + id_pedido` |
+| **partition key** | vertical | agrupa as linhas que moram juntas — e, num cluster, decide em qual nó. A regra: **armazene junto o que você quer recuperar junto** |
+| **clustering key** | — | decide **em que ordem** as linhas ficam dentro da partição |
+
+Na `lab.cliente`, os três papéis se confundem: a chave tem uma coluna só, que é ao mesmo tempo primary key e partition key, e não existe clustering key. Na seção 6 eles se separam.
 
 **→ Próxima seção.** Você sabe onde cada linha mora e em que ordem. Falta ver o que existe de fato no disco — inclusive a Gracimar, que você apagou e que ainda está lá.
 
