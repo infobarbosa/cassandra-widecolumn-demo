@@ -9,7 +9,7 @@ set -euo pipefail
 
 # Tag da imagem do laboratório. Para testar uma branch da imagem, troque pelo
 # nome da branch (o CI publica uma tag com esse nome).
-IMAGE_TAG="latest"
+IMAGE_TAG="app-infobarbank"
 
 # Desabilitar o pager padrao da AWS CLI (evita que comandos travem no less/END)
 export AWS_PAGER=""
@@ -253,6 +253,7 @@ echo -e "${GREEN}${BOLD}========================================================
 echo -e " ${BOLD}Instância ID:${NC}     ${INSTANCE_ID}"
 echo -e " ${BOLD}IP Público:${NC}       ${PUBLIC_IP}"
 echo -e " ${BOLD}Link de Acesso:${NC}   ${CYAN}${BOLD}http://${PUBLIC_IP}:8080${NC}"
+echo -e " ${BOLD}App infobarBank:${NC}  ${CYAN}http://${PUBLIC_IP}:8080/proxy/8000/${NC}  (seção 9.j)"
 echo -e " ${BOLD}Autenticação:${NC}     ${YELLOW}${BOLD}Passwordless (Acesso Direto - Sem Senha)${NC}"
 echo -e "-------------------------------------------------------------------"
 echo -e " ${BOLD}IMPORTANTE - TEMPO DE INICIALIZAÇÃO:${NC}"

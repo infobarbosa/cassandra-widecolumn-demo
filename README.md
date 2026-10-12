@@ -2919,29 +2919,15 @@ O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas r
 
 Você percorreu as sete consultas uma a uma. Agora junte tudo: o **app do infobarBank** é um emulador do aplicativo do banco, com as três telas da seção 7, que só funciona com as consultas que você escrever.
 
-Baixe o app e suba o servidor:
-
-```sh
-# 9.j.1
-git clone -b app-infobarbank https://github.com/infobarbosa/cassandra-widecolumn-demo.git ~/project/app-infobarbank
+O app já está no ar: ele sobe junto com o ambiente, logo depois da carga das keyspaces. Abra no navegador o mesmo endereço do code-server, terminado em `/proxy/8000/`:
 
 ```
-
-```sh
-# 9.j.2
-python3 ~/project/app-infobarbank/app/servidor.py
-
+http://<IP-PUBLICO>:8080/proxy/8000/
 ```
 
-```
-App infobarBank no ar, porta 8000.
-Abra no navegador:  http://<IP-PUBLICO>:8080/proxy/8000/
-Para encerrar: Control+C
-```
+Em execução local, `http://localhost:8080/proxy/8000/`. O code-server repassa o acesso ao app, sem abrir porta nova na AWS.
 
-Abra no navegador o mesmo endereço do code-server, terminado em `/proxy/8000/`: `http://<IP-PUBLICO>:8080/proxy/8000/` (em execução local, `http://localhost:8080/proxy/8000/`). O code-server repassa o acesso ao app, sem abrir porta nova na AWS.
-
-> O terminal fica ocupado enquanto o app está no ar. Para continuar usando o `cqlsh`, abra outro terminal (o **+** no painel de terminais). `Control+C` encerra o app.
+> Se a página não abrir, confira se o app subiu: `cat /var/log/lab/app.log` no terminal deve mostrar `App infobarBank no ar`. Logo após criar ou religar o ambiente, espere cerca de um minuto.
 
 Como usar:
 

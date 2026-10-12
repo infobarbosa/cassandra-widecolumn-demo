@@ -11,7 +11,7 @@ name: cassandra-widecolumn-demo
 services:
   cassandra-lab:
     container_name: cassandra-lab
-    image: ghcr.io/infobarbosa/cassandra-lab-docker-image:latest
+    image: ghcr.io/infobarbosa/cassandra-lab-docker-image:app-infobarbank
     ports:
       - "8080:8080"
     # Tempo para o nodetool drain descarregar as memtables ao parar o container.
