@@ -2915,7 +2915,30 @@ O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas r
 
 > `ALLOW FILTERING` tem lugar legítimo: consulta administrativa pontual, exploração de dados, tabela pequena e limitada por natureza. O que ele não é: solução para uma consulta que a aplicação faz a cada requisição.
 
-### 9.j. O que você deve conseguir explicar
+### 9.j. Monte o app
+
+Você percorreu as sete consultas uma a uma. Agora junte tudo: o **app do infobarBank** é um emulador do aplicativo do banco, com as três telas da seção 7, que só funciona com as consultas que você escrever.
+
+O app já está no ar: ele sobe junto com o ambiente, logo depois da carga das keyspaces. Abra no navegador o mesmo endereço do code-server, terminado em `/proxy/8000/`:
+
+```
+http://<IP-PUBLICO>:8080/proxy/8000/
+```
+
+Em execução local, `http://localhost:8080/proxy/8000/`. O code-server repassa o acesso ao app, sem abrir porta nova na AWS.
+
+> Se a página não abrir, confira se o app subiu: `cat /var/log/lab/app.log` no terminal deve mostrar `App infobarBank no ar`. Logo após criar ou religar o ambiente, espere cerca de um minuto.
+
+Como usar:
+
+- **À esquerda, o celular.** Cada bloco da tela tem a etiqueta da consulta que o alimenta. Enquanto a consulta não existe, o bloco fica vazio.
+- **À direita, a consulta selecionada:** o que a tela tem em mãos (`:id_cliente`, `:competencia`…), as colunas que ela precisa exibir e a caixa para o CQL. Use os parâmetros com dois-pontos, como no exemplo da caixa: o app executa a consulta como prepared statement, o mesmo recurso da seção 11.
+- **Cada execução diz se o resultado confere** com o que a tela espera e quanto custou: quantas partições, quantas linhas lidas. Varredura e `ALLOW FILTERING` aparecem em âmbar — a tela até funciona, mas não é a resposta.
+- **Navegue.** Toque num cartão, troque o mês, use os filtros, toque numa linha do extrato. Cada gesto muda o que a tela tem em mãos — e algumas consultas só ficam possíveis depois dele.
+
+O objetivo é deixar as sete abas verdes. Se travar, o botão **Dica** dá duas pistas por consulta: primeiro a tabela, depois a forma do `WHERE`.
+
+### 9.k. O que você deve conseguir explicar
 
 - Os três critérios da chave, e um exemplo de chave que falha em cada um.
 - A diferença entre partition key composta e múltiplas clustering keys — inclusive quais colunas cada uma exige na consulta.
@@ -3743,11 +3766,11 @@ Não é problema — é a seção 5. Veja `gc_grace_seconds`.
 
 Fora do horário de aula, é possível executar o mesmo ambiente em qualquer máquina com Docker. A imagem é publicada para `linux/amd64` e `linux/arm64` (inclusive Macs com Apple Silicon), e precisa de cerca de **2 GB de RAM** livres.
 
-Faça o clone deste repositório e inicialize o container com o `compose.yaml` disponível na raiz do projeto:
+Baixe o `compose.yaml` numa pasta vazia e inicialize o container:
 
 ```sh
-git clone https://github.com/infobarbosa/cassandra-widecolumn-demo.git
-cd cassandra-widecolumn-demo
+mkdir cassandra-lab && cd cassandra-lab
+curl -sSO https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo/main/compose.yaml
 docker compose up -d
 
 ```
