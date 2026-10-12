@@ -3766,11 +3766,11 @@ Não é problema — é a seção 5. Veja `gc_grace_seconds`.
 
 Fora do horário de aula, é possível executar o mesmo ambiente em qualquer máquina com Docker. A imagem é publicada para `linux/amd64` e `linux/arm64` (inclusive Macs com Apple Silicon), e precisa de cerca de **2 GB de RAM** livres.
 
-Faça o clone deste repositório e inicialize o container com o `compose.yaml` disponível na raiz do projeto:
+Baixe o `compose.yaml` numa pasta vazia e inicialize o container:
 
 ```sh
-git clone https://github.com/infobarbosa/cassandra-widecolumn-demo.git
-cd cassandra-widecolumn-demo
+mkdir cassandra-lab && cd cassandra-lab
+curl -sSO https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo/main/compose.yaml
 docker compose up -d
 
 ```

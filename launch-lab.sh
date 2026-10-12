@@ -9,7 +9,7 @@ set -euo pipefail
 
 # Tag da imagem do laboratório. Para testar uma branch da imagem, troque pelo
 # nome da branch (o CI publica uma tag com esse nome).
-IMAGE_TAG="app-infobarbank"
+IMAGE_TAG="latest"
 
 # Desabilitar o pager padrao da AWS CLI (evita que comandos travem no less/END)
 export AWS_PAGER=""
