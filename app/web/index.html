@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App infobarBank</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #eef1f4;
+  --painel: #ffffff;
+  --texto: #1d2a33;
+  --suave: #63727d;
+  --linha: #d8dee3;
+  --azul: #1971c2;
+  --azul-claro: #e1effb;
+  --verde: #2f9e44;
+  --verde-claro: #e3f6e6;
+  --ambar: #c26a00;
+  --ambar-claro: #fff1db;
+  --vermelho: #d63333;
+  --vermelho-claro: #fde8e8;
+  --celular: #2c3238;
+  --mono: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--texto); font: 15px/1.45 var(--sans); }
+.tela-toda { display: grid; grid-template-columns: 430px minmax(0, 1fr); gap: 24px; padding: 20px 24px; min-height: 100%; }
+@media (max-width: 980px) { .tela-toda { grid-template-columns: 1fr; } }
+
+/* --- coluna do app ------------------------------------------------------ */
+.coluna-app { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.login { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--suave); }
+.login select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--linha); background: #fff; color: var(--texto); }
+.celular { width: 390px; height: 780px; background: var(--celular); border-radius: 44px; padding: 18px 14px; box-shadow: 0 18px 40px rgba(20, 30, 40, .25); }
+.visor { background: #f7f8fa; height: 100%; border-radius: 30px; overflow: hidden; display: flex; flex-direction: column; }
+.barra { background: var(--azul); color: #fff; padding: 16px 18px 12px; display: flex; align-items: center; gap: 10px; }
+.barra h1 { font-size: 17px; margin: 0; font-weight: 600; flex: 1; }
+.barra button { background: none; border: 0; color: #fff; font-size: 20px; cursor: pointer; padding: 0 4px; }
+.barra button[hidden] { display: none; }
+.conteudo { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.bloco { background: #fff; border-radius: 14px; padding: 12px 14px; position: relative; border: 1px solid #e6e9ec; }
+.bloco h2 { font-size: 13px; font-weight: 600; color: var(--suave); margin: 0 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+.etiqueta { position: absolute; top: 9px; right: 10px; font: 600 11px/1 var(--mono); padding: 4px 6px; border-radius: 6px; border: 1px solid currentColor; cursor: pointer; background: #fff; }
+.etiqueta.ok { color: var(--verde); } .etiqueta.ambar { color: var(--ambar); } .etiqueta.erro { color: var(--vermelho); } .etiqueta.nada { color: var(--suave); }
+.vazio { border: 1.5px dashed var(--linha); border-radius: 10px; padding: 14px; text-align: center; color: var(--suave); font-size: 13px; cursor: pointer; }
+.vazio:hover { border-color: var(--azul); color: var(--azul); }
+.ola { font-size: 20px; font-weight: 600; }
+.saldo { font-size: 26px; font-weight: 700; margin-top: 4px; }
+.miudo { font-size: 12px; color: var(--suave); }
+.lanc { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; padding: 8px 0; border-top: 1px solid #eef0f2; font-size: 14px; align-items: baseline; }
+.lanc:first-of-type { border-top: 0; }
+.lanc .data { font: 12px var(--mono); color: var(--suave); }
+.lanc .valor { font-variant-numeric: tabular-nums; font-weight: 600; }
+.lanc .valor.credito { color: var(--verde); }
+.clicavel { cursor: pointer; border-radius: 8px; }
+.clicavel:hover { background: var(--azul-claro); }
+.cartoes { display: flex; gap: 8px; overflow-x: auto; }
+.cartao { min-width: 118px; border-radius: 12px; padding: 10px; color: #fff; background: linear-gradient(135deg, #3b4a57, #1e2a33); cursor: pointer; font-size: 12px; }
+.cartao.inativo { opacity: .45; }
+.cartao .num { font: 13px var(--mono); margin: 10px 0 6px; letter-spacing: .05em; }
+.cartao .lim { font-size: 15px; font-weight: 700; }
+.botao-app { width: 100%; border: 0; border-radius: 10px; padding: 11px; background: var(--azul); color: #fff; font: 600 14px var(--sans); cursor: pointer; }
+.mes { display: flex; align-items: center; justify-content: space-between; font-weight: 600; }
+.mes button { border: 1px solid var(--linha); background: #fff; border-radius: 8px; width: 34px; height: 30px; cursor: pointer; font-size: 15px; }
+.mes button:disabled { opacity: .35; cursor: default; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--linha); background: #fff; border-radius: 999px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+.chip.ativo { background: var(--azul); border-color: var(--azul); color: #fff; }
+.campo { padding: 8px 0; border-top: 1px solid #eef0f2; }
+.campo:first-of-type { border-top: 0; }
+.campo .rot { font-size: 12px; color: var(--suave); }
+.campo .val { font-size: 16px; font-weight: 600; word-break: break-all; }
+.aviso-app { font-size: 12px; color: var(--ambar); margin-top: 6px; }
+
+/* --- coluna do CQL ------------------------------------------------------ */
+.coluna-cql { background: var(--painel); border-radius: 16px; border: 1px solid var(--linha); display: flex; flex-direction: column; min-width: 0; }
+.abas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 14px 16px; border-bottom: 1px solid var(--linha); }
+.aba { font: 600 14px var(--mono); padding: 7px 12px; border-radius: 9px; border: 1px solid var(--linha); background: #fff; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--texto); }
+.aba.atual { background: var(--texto); color: #fff; border-color: var(--texto); }
+.ponto { width: 8px; height: 8px; border-radius: 50%; background: var(--linha); }
+.ponto.ok { background: var(--verde); } .ponto.ambar { background: var(--ambar); } .ponto.erro { background: var(--vermelho); }
+.progresso { margin-left: auto; font-size: 13px; color: var(--suave); }
+.corpo { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.corpo h2 { margin: 0; font-size: 20px; }
+.corpo h2 small { font: 13px var(--sans); color: var(--suave); margin-left: 6px; }
+.descricao { margin: 0; color: var(--suave); max-width: 75ch; }
+.contexto { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: 14px; align-items: start; }
+.contexto .rot { color: var(--suave); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font: 12.5px var(--mono); background: var(--bg); border-radius: 6px; padding: 3px 7px; }
+.tag.falta { background: var(--vermelho-claro); color: var(--vermelho); }
+.tag.indef { color: var(--ambar); background: var(--ambar-claro); }
+textarea { width: 100%; min-height: 150px; resize: vertical; font: 14px/1.5 var(--mono); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--linha); background: #fbfcfd; color: var(--texto); }
+textarea:focus { outline: 2px solid var(--azul-claro); border-color: var(--azul); }
+.botoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.botoes button { font: 600 14px var(--sans); padding: 8px 14px; border-radius: 9px; border: 1px solid var(--linha); background: #fff; cursor: pointer; color: var(--texto); }
+.botoes button.principal { background: var(--azul); border-color: var(--azul); color: #fff; }
+.botoes .atalho { font-size: 12px; color: var(--suave); }
+.dica { background: var(--azul-claro); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.situacao { border-radius: 10px; padding: 10px 12px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.situacao.ok { background: var(--verde-claro); }
+.situacao.ambar { background: var(--ambar-claro); }
+.situacao.erro { background: var(--vermelho-claro); }
+.situacao .erro-cass { font: 13px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.resultado { overflow-x: auto; border: 1px solid var(--linha); border-radius: 10px; max-height: 330px; }
+.resultado table { border-collapse: collapse; font: 13px var(--mono); min-width: 100%; }
+.resultado th, .resultado td { padding: 6px 10px; border-bottom: 1px solid #eef0f2; text-align: left; white-space: nowrap; }
+.resultado th { position: sticky; top: 0; background: #f4f6f8; font-weight: 600; }
+.resultado td.num { text-align: right; font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="tela-toda">
+  <section class="coluna-app">
+    <label class="login">login como <select id="persona"></select></label>
+    <div class="celular">
+      <div class="visor">
+        <div class="barra">
+          <button id="voltar" hidden aria-label="Voltar">‹</button>
+          <h1 id="titulo-tela">infobarBank</h1>
+        </div>
+        <div class="conteudo" id="conteudo"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="coluna-cql">
+    <nav class="abas" id="abas"></nav>
+    <div class="corpo">
+      <h2 id="q-titulo"></h2>
+      <p class="descricao" id="q-descricao"></p>
+      <div class="contexto">
+        <span class="rot">A tela tem em mãos</span><div class="tags" id="q-parametros"></div>
+        <span class="rot">A tela precisa de</span><div class="tags" id="q-colunas"></div>
+      </div>
+      <textarea id="cql" spellcheck="false" placeholder="SELECT ... FROM infobarbank.... WHERE ... = :id_cliente;"></textarea>
+      <div class="botoes">
+        <button class="principal" id="executar">▶ Executar</button>
+        <button id="dica">Dica</button>
+        <button id="limpar">Limpar</button>
+        <button id="solucao" hidden>Solução</button>
+        <span class="atalho">Ctrl+Enter executa</span>
+      </div>
+      <div class="dica" id="caixa-dica" hidden></div>
+      <div class="situacao" id="situacao" hidden></div>
+      <div class="resultado" id="resultado" hidden></div>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const QS = ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"];
+const TELAS = { inicio: "infobarBank", extrato: "Extrato", detalhe: "Detalhe" };
+
+const est = {
+  consultas: {}, nomes: {}, professor: false, personas: [],
+  q: "Q1",
+  cql: {}, situacao: {}, dados: {}, dicas: {},
+  ctx: { id_cliente: null, competencia: null, competencias: [], id_produto: null, tipo_operacao: null, id_lancamento: null },
+  tela: "inicio", filtro: "todos",
+};
+
+// --- persistência por navegador (conveniência; falhar não quebra nada) ----
+function ler(chave, padrao) { try { return JSON.parse(localStorage.getItem(chave)) ?? padrao; } catch { return padrao; } }
+function gravar(chave, valor) { try { localStorage.setItem(chave, JSON.stringify(valor)); } catch {} }
+
+async function api(rota, corpo) {
+  const r = await fetch(rota, corpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) } : {});
+  return r.json();
+}
+
+// --- formatação ----------------------------------------------------------
+const real = (v) => v == null ? "—" : "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dataCurta = (s) => s ? `${s.slice(8, 10)}/${s.slice(5, 7)} ${s.slice(11, 16)}` : "";
+const dataLonga = (s) => s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)} ${s.slice(11, 16)}` : "";
+const mesAnterior = (c) => { let [a, m] = c.split("-").map(Number); m -= 1; if (m === 0) { m = 12; a -= 1; } return `${a}-${String(m).padStart(2, "0")}`; };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+function objetos(res) { return (res?.linhas || []).map((l) => Object.fromEntries(res.colunas.map((c, i) => [c, l[i]]))); }
+
+// --- situação de cada consulta ------------------------------------------
+function classificar(res) {
+  if (!res || res.erro) return "erro";
+  const varre = res.custo && (res.custo.faixas > 0 || res.custo.filtragem);
+  if (res.confere && res.confere.ok && !varre) return "ok";
+  return "ambar";
+}
+
+function parametrosDe(q) {
+  const p = {};
+  for (const n of est.consultas[q].parametros) p[n] = est.ctx[n];
+  return p;
+}
+
+async function rodar(q, parametros) {
+  const cql = est.cql[q];
+  if (!cql || !cql.trim()) return null;
+  let res = await api("api/executar", { q, cql, parametros: parametros || parametrosDe(q) });
+  // Q3.1: sem lançamentos aprovados no mês, o app procura no mês anterior.
+  if (q === "Q3" && !res.erro && res.linhas.length === 0 && est.ctx.competencia) {
+    const anterior = mesAnterior(est.ctx.competencia);
+    const res2 = await api("api/executar", { q, cql, parametros: { ...parametrosDe(q), competencia: anterior } });
+    if (!res2.erro) { res2.fallback = anterior; res = res2; }
+  }
+  return res;
+}
+
+// --- abas e painel -------------------------------------------------------
+function desenharAbas() {
+  const resolvidas = QS.filter((q) => est.situacao[q] === "ok").length;
+  $("abas").innerHTML = QS.map((q) => `<button class="aba ${q === est.q ? "atual" : ""}" data-q="${q}"><span class="ponto ${est.situacao[q] || ""}"></span>${q}</button>`).join("")
+    + `<span class="progresso">${resolvidas}/7 resolvidas</span>`;
+}
+
+function valorParametro(n) {
+  const v = est.ctx[n];
+  if (v) return `<span class="tag">:${n} = '${esc(v)}'</span>`;
+  const comoObter = { id_produto: "escolha um cartão ou a conta no filtro do extrato", tipo_operacao: "escolha Débito ou Crédito no filtro do extrato", id_lancamento: "toque numa linha do extrato" }[n] || "indisponível";
+  return `<span class="tag indef">:${n} — ${comoObter}</span>`;
+}
+
+function desenharPainel() {
+  const c = est.consultas[est.q];
+  $("q-titulo").innerHTML = `${est.q} · ${esc(c.titulo)} <small>tela ${esc(c.tela)}</small>`;
+  $("q-descricao").textContent = c.descricao;
+  $("q-parametros").innerHTML = c.parametros.map(valorParametro).join("");
+  const res = est.dados[est.q];
+  const faltando = res?.confere?.faltando || [];
+  $("q-colunas").innerHTML = c.colunas.map((col) => `<span class="tag ${faltando.includes(col) ? "falta" : ""}">${col}</span>`).join("");
+  $("cql").value = est.cql[est.q] || "";
+  $("solucao").hidden = !est.professor;
+  const nDicas = est.dicas[est.q] || 0;
+  $("caixa-dica").hidden = nDicas === 0;
+  $("caixa-dica").innerHTML = c.dicas.slice(0, nDicas).map((d, i) => `<div>Dica ${i + 1}: ${esc(d)}</div>`).join("");
+  $("dica").disabled = nDicas >= c.dicas.length;
+  desenharResultado(res);
+  desenharAbas();
+}
+
+function textoCusto(res) {
+  const k = res.custo;
+  if (!k || k.indisponivel) return "";
+  const n = res.linhas.length;
+  if (k.faixas > 0) return `⚠ Varredura: o coordinator percorreu ${k.faixas} faixas de token e leu ${k.lidas} linha(s) para devolver ${n}. Funciona, mas não escala.`;
+  if (k.filtragem) return `⚠ ALLOW FILTERING dentro de uma partição: o custo é limitado, mas o Cassandra lê linhas para descartar. Existe uma tabela cuja ordem já entrega o que a tela pede (seção 9.g).`;
+  const parts = k.particoes <= 1 ? "1 partição" : `${k.particoes} partições`;
+  const lidas = k.lidas > n ? ` · leu ${k.lidas} linhas para devolver ${n}` : ` · ${n} linha(s)`;
+  return `${parts}${lidas} · ${k.ms} ms`;
+}
+
+function desenharResultado(res) {
+  const sit = $("situacao"), tab = $("resultado");
+  if (!res) { sit.hidden = true; tab.hidden = true; return; }
+  sit.hidden = false;
+  const classe = classificar(res);
+  sit.className = "situacao " + classe;
+  if (res.erro) {
+    sit.innerHTML = `<strong>A consulta não rodou.</strong><div class="erro-cass">${esc(res.erro)}</div>`;
+    tab.hidden = true;
+    return;
+  }
+  const conf = res.confere;
+  const msgConf = conf ? (conf.ok ? `✓ ${esc(conf.msg)}` : `✗ ${esc(conf.msg)}`) : "Não foi possível conferir com o que a tela espera.";
+  const fallback = res.fallback ? `<div>O mês escolhido não tinha lançamentos aprovados; o app repetiu a consulta com ${res.fallback} (regra Q3.1, da aplicação).</div>` : "";
+  sit.innerHTML = `<strong>${msgConf}</strong><div>${esc(textoCusto(res))}</div>${fallback}`;
+  tab.hidden = false;
+  const numericas = new Set(res.colunas.filter((_, i) => res.linhas.length && typeof res.linhas[0][i] === "number"));
+  tab.innerHTML = `<table><thead><tr>${res.colunas.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`
+    + (res.linhas.length ? res.linhas.map((l) => `<tr>${l.map((v, i) => `<td class="${numericas.has(res.colunas[i]) ? "num" : ""}">${esc(v ?? "null")}</td>`).join("")}</tr>`).join("")
+                         : `<tr><td colspan="${res.colunas.length || 1}">(0 linhas)</td></tr>`)
+    + `</tbody></table>`;
+}
+
+// --- o celular -----------------------------------------------------------
+function etiqueta(q) { return `<span class="etiqueta ${est.situacao[q] || "nada"}" data-q="${q}">${q}</span>`; }
+function vazio(q, texto) { return `<div class="vazio" data-q="${q}">${q} — ${texto || "escreva a consulta ao lado"}</div>`; }
+function blocoComErro(q) { const r = est.dados[q]; return r && r.erro ? vazio(q, "a consulta deu erro; veja ao lado") : null; }
+
+function telaInicio() {
+  const q1 = est.dados.Q1, q2 = est.dados.Q2, q3 = est.dados.Q3;
+  let h = `<div class="bloco">${etiqueta("Q1")}`;
+  if (!est.cql.Q1) h += vazio("Q1");
+  else if (blocoComErro("Q1")) h += blocoComErro("Q1");
+  else { const c = objetos(q1)[0] || {}; h += `<div class="ola">Olá, ${esc(c.apelido_cliente ?? "—")}</div><div class="miudo">conta ${esc(c.id_conta ?? "—")}</div><div class="saldo">${real(c.saldo_disponivel)}</div>`; }
+  h += `</div><div class="bloco">${etiqueta("Q3")}<h2>Últimos lançamentos</h2>`;
+  if (!est.cql.Q3) h += vazio("Q3");
+  else if (blocoComErro("Q3")) h += blocoComErro("Q3");
+  else {
+    const ls = objetos(q3).slice(0, 3);
+    h += ls.length ? ls.map((l) => `<div class="lanc"><span class="data">${dataCurta(l.data_hora)}</span><span>${esc(l.estabelecimento)}</span><span class="valor">${real(l.valor)}</span></div>`).join("") : `<div class="miudo">Nenhum lançamento aprovado.</div>`;
+    if (q3.fallback) h += `<div class="aviso-app">mostrando ${q3.fallback}: o mês atual não tinha lançamentos aprovados</div>`;
+  }
+  h += `</div><div class="bloco">${etiqueta("Q2")}<h2>Seus cartões</h2>`;
+  if (!est.cql.Q2) h += vazio("Q2");
+  else if (blocoComErro("Q2")) h += blocoComErro("Q2");
+  else {
+    const cs = objetos(q2);
+    h += cs.length ? `<div class="cartoes">${cs.map((c) => `<div class="cartao ${c.status && c.status !== "ATIVO" ? "inativo" : ""}" data-produto="${esc(c.id_cartao)}" title="Ver o extrato deste cartão"><div>${esc(c.status ?? "")}</div><div class="num">•••• ${esc(String(c.num_cartao ?? "").slice(-4))}</div><div class="miudo" style="color:#cfd8de">disponível</div><div class="lim">${real(c.limite_disponivel)}</div></div>`).join("")}</div>` : `<div class="miudo">Nenhum cartão.</div>`;
+  }
+  h += `</div><button class="botao-app" id="ir-extrato">Ver extrato</button>`;
+  return h;
+}
+
+function filtroAtivo() { return est.filtro === "produto" ? "Q5" : est.filtro === "tipo" ? "Q6" : "Q4"; }
+
+function telaExtrato() {
+  const comps = est.ctx.competencias, i = comps.indexOf(est.ctx.competencia);
+  const q = filtroAtivo();
+  const contaId = objetos(est.dados.Q1)[0]?.id_conta || est.ctx.id_cliente;
+  const cartoes = objetos(est.dados.Q2).map((c) => c.id_cartao).filter(Boolean);
+  let h = `<div class="bloco"><div class="mes"><button id="mes-ant" ${i <= 0 ? "disabled" : ""} aria-label="Mês anterior">◀</button><span>${esc(est.ctx.competencia || "—")}</span><button id="mes-prox" ${i < 0 || i >= comps.length - 1 ? "disabled" : ""} aria-label="Próximo mês">▶</button></div></div>`;
+  h += `<div class="chips"><button class="chip ${q === "Q4" ? "ativo" : ""}" data-filtro="todos">Todos · Q4</button>`
+    + `<button class="chip ${q === "Q5" && est.ctx.id_produto === contaId ? "ativo" : ""}" data-filtro="produto" data-produto="${esc(contaId)}">Conta · Q5</button>`
+    + cartoes.map((id) => `<button class="chip ${q === "Q5" && est.ctx.id_produto === id ? "ativo" : ""}" data-filtro="produto" data-produto="${esc(id)}">Cartão ${esc(id.slice(0, 4))}… · Q5</button>`).join("")
+    + `<button class="chip ${q === "Q6" && est.ctx.tipo_operacao === "DEBITO" ? "ativo" : ""}" data-filtro="tipo" data-tipo="DEBITO">Débito · Q6</button>`
+    + `<button class="chip ${q === "Q6" && est.ctx.tipo_operacao === "CREDITO" ? "ativo" : ""}" data-filtro="tipo" data-tipo="CREDITO">Crédito · Q6</button></div>`;
+  h += `<div class="bloco">${etiqueta(q)}<h2>Lançamentos</h2>`;
+  if (!est.cql[q]) h += vazio(q);
+  else if (blocoComErro(q)) h += blocoComErro(q);
+  else {
+    const ls = objetos(est.dados[q]);
+    const semId = ls.length && !("id_lancamento" in ls[0]);
+    h += ls.length ? ls.map((l) => `<div class="lanc ${semId ? "" : "clicavel"}" ${semId ? "" : `data-lancamento="${esc(l.id_lancamento)}"`}><span class="data">${dataCurta(l.data_hora)}</span><span>${esc(l.estabelecimento)}</span><span class="valor ${l.tipo_operacao === "CREDITO" ? "credito" : ""}">${l.tipo_operacao === "CREDITO" ? "+" : ""}${real(l.valor)}</span></div>`).join("") : `<div class="miudo">Nenhum lançamento neste filtro.</div>`;
+    if (semId) h += `<div class="aviso-app">Sem id_lancamento na consulta, a linha não abre o detalhe.</div>`;
+  }
+  return h + `</div>`;
+}
+
+function telaDetalhe() {
+  let h = `<div class="bloco">${etiqueta("Q7")}`;
+  if (!est.cql.Q7) h += vazio("Q7");
+  else if (blocoComErro("Q7")) h += blocoComErro("Q7");
+  else {
+    const l = objetos(est.dados.Q7)[0];
+    if (!l) h += `<div class="miudo">Lançamento não encontrado.</div>`;
+    else {
+      const campos = [["Tipo", l.tipo_operacao === "CREDITO" ? "Crédito" : l.tipo_operacao === "DEBITO" ? "Débito" : l.tipo_operacao], ["Data", dataLonga(l.data_hora)], ["Estabelecimento", l.estabelecimento], ["Valor", real(l.valor)], ["Situação", l.status], ["Código de autenticação", l.codigo_autenticacao]];
+      h += campos.map(([r, v]) => `<div class="campo"><div class="rot">${r}</div><div class="val">${esc(v ?? "—")}</div></div>`).join("");
+    }
+  }
+  return h + `</div>`;
+}
+
+function desenharCelular() {
+  $("titulo-tela").textContent = TELAS[est.tela];
+  $("voltar").hidden = est.tela === "inicio";
+  $("conteudo").innerHTML = est.tela === "inicio" ? telaInicio() : est.tela === "extrato" ? telaExtrato() : telaDetalhe();
+}
+
+function necessarias() {
+  if (est.tela === "inicio") return ["Q1", "Q2", "Q3"];
+  if (est.tela === "extrato") return ["Q1", "Q2", filtroAtivo()];
+  return ["Q7"];
+}
+
+async function atualizarCelular() {
+  const qs = necessarias();
+  const res = await Promise.all(qs.map((q) => rodar(q)));
+  qs.forEach((q, i) => { est.dados[q] = res[i]; if (res[i]) est.situacao[q] = classificar(res[i]); });
+  gravar("ib:situacao", est.situacao);
+  desenharCelular();
+  desenharPainel();
+}
+
+// --- ações ---------------------------------------------------------------
+function selecionar(q) { est.q = q; desenharPainel(); $("cql").focus(); }
+
+function irParaTelaDa(q) {
+  const t = est.consultas[q].tela;
+  est.tela = t === "início" ? "inicio" : t;
+  if (q === "Q4") est.filtro = "todos";
+  if (q === "Q5") { est.filtro = "produto"; if (!est.ctx.id_produto) est.ctx.id_produto = objetos(est.dados.Q1)[0]?.id_conta || est.ctx.id_cliente; }
+  if (q === "Q6") { est.filtro = "tipo"; if (!est.ctx.tipo_operacao) est.ctx.tipo_operacao = "DEBITO"; }
+}
+
+async function executar() {
+  const q = est.q;
+  est.cql[q] = $("cql").value;
+  gravar("ib:cql", est.cql);
+  irParaTelaDa(q);
+  if (q === "Q7" && !est.ctx.id_lancamento) {
+    est.dados[q] = { erro: "Toque numa linha do extrato primeiro: é ela que entrega o :id_lancamento para a tela de detalhe." };
+    est.situacao[q] = "erro"; desenharPainel(); desenharCelular(); return;
+  }
+  $("executar").disabled = true;
+  try { await atualizarCelular(); } finally { $("executar").disabled = false; }
+}
+
+async function trocarPersona(id) {
+  est.ctx = { id_cliente: id, competencia: null, competencias: [], id_produto: null, tipo_operacao: null, id_lancamento: null };
+  est.tela = "inicio"; est.filtro = "todos";
+  gravar("ib:persona", id);
+  const { competencias } = await api("api/competencias?id_cliente=" + encodeURIComponent(id));
+  est.ctx.competencias = competencias;
+  // A mais recente é o mês corrente, pela metade: começa pela penúltima.
+  est.ctx.competencia = competencias.length > 1 ? competencias[competencias.length - 2] : competencias[0] || null;
+  await atualizarCelular();
+}
+
+document.addEventListener("click", async (ev) => {
+  const alvo = ev.target.closest("[data-q], [data-produto], [data-filtro], [data-lancamento], #ir-extrato, #mes-ant, #mes-prox, #voltar");
+  if (!alvo) return;
+  if (alvo.matches(".aba, .etiqueta, .vazio")) return selecionar(alvo.dataset.q);
+  if (alvo.id === "ir-extrato") { est.tela = "extrato"; est.filtro = "todos"; return atualizarCelular(); }
+  if (alvo.id === "voltar") { est.tela = est.tela === "detalhe" ? "extrato" : "inicio"; return atualizarCelular(); }
+  if (alvo.id === "mes-ant" || alvo.id === "mes-prox") {
+    const comps = est.ctx.competencias, i = comps.indexOf(est.ctx.competencia) + (alvo.id === "mes-ant" ? -1 : 1);
+    if (comps[i]) { est.ctx.competencia = comps[i]; await atualizarCelular(); }
+    return;
+  }
+  if (alvo.dataset.lancamento) { est.ctx.id_lancamento = alvo.dataset.lancamento; est.tela = "detalhe"; selecionarSemFoco("Q7"); return atualizarCelular(); }
+  if (alvo.dataset.filtro === "tipo") { est.filtro = "tipo"; est.ctx.tipo_operacao = alvo.dataset.tipo; selecionarSemFoco("Q6"); return atualizarCelular(); }
+  if (alvo.dataset.filtro === "todos") { est.filtro = "todos"; selecionarSemFoco("Q4"); return atualizarCelular(); }
+  if (alvo.dataset.produto) { est.filtro = "produto"; est.ctx.id_produto = alvo.dataset.produto; est.tela = "extrato"; selecionarSemFoco("Q5"); return atualizarCelular(); }
+});
+function selecionarSemFoco(q) { est.q = q; }
+
+$("executar").addEventListener("click", executar);
+$("cql").addEventListener("keydown", (ev) => { if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") { ev.preventDefault(); executar(); } });
+$("cql").addEventListener("input", () => { est.cql[est.q] = $("cql").value; gravar("ib:cql", est.cql); });
+$("dica").addEventListener("click", () => { est.dicas[est.q] = (est.dicas[est.q] || 0) + 1; desenharPainel(); });
+$("limpar").addEventListener("click", () => { est.cql[est.q] = ""; est.dados[est.q] = null; delete est.situacao[est.q]; gravar("ib:cql", est.cql); gravar("ib:situacao", est.situacao); desenharPainel(); desenharCelular(); });
+$("solucao").addEventListener("click", () => { $("cql").value = est.consultas[est.q].solucao || ""; est.cql[est.q] = $("cql").value; gravar("ib:cql", est.cql); });
+$("persona").addEventListener("change", (ev) => trocarPersona(ev.target.value));
+
+(async function iniciar() {
+  const ini = await api("api/inicio");
+  est.consultas = ini.consultas; est.nomes = ini.nomes_parametros; est.professor = ini.professor; est.personas = ini.personas;
+  est.cql = ler("ib:cql", {}); est.situacao = ler("ib:situacao", {});
+  const salva = ler("ib:persona", null);
+  const inicial = est.personas.some((p) => p.id === salva) ? salva : est.personas[0].id;
+  $("persona").innerHTML = est.personas.map((p) => `<option value="${p.id}" ${p.id === inicial ? "selected" : ""}>${esc(p.nome)}</option>`).join("");
+  desenharPainel();
+  await trocarPersona(inicial);
+})();
+</script>
+</body>
+</html>
