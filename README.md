@@ -113,7 +113,7 @@ O laboratório roda em uma instância **AWS EC2** (`t3.large`) criada automatica
 > **ATENÇÃO:**
 > 1. **Região:** utilize sempre a região **Norte da Virgínia (`us-east-1`)** no Console AWS.
 > 2. **Custos:** a instância EC2 e o volume EBS consomem créditos do seu laboratório AWS Academy. Ao encerrar a aula, garanta que a instância esteja parada (**Stopped**) ou aguarde o desligamento automático da sessão.
-> 3. **Não recrie a máquina:** se a instância já existir, siga as instruções de [Retomando o laboratório](#retomando-o-laboratório).
+> 3. **Não recrie a máquina para continuar o trabalho:** cada execução do `launch-lab.sh` cria uma instância **nova e vazia**, com data e hora no nome. Se a sua instância já existir, siga as instruções de [Retomando o laboratório](#retomando-o-laboratório). Se precisar mesmo recriar, encerre a anterior (**Instance state** > **Terminate instance**) para não consumir créditos.
 
 ### Passo 1: Abrir o AWS CloudShell
 
@@ -135,7 +135,7 @@ O script realiza de forma automatizada:
 
 - Descoberta da VPC padrão e de uma subnet pública.
 - Criação do Security Group `lab-cassandra-sg`, liberando as portas `8080` (IDE) e `22` (SSH).
-- Lançamento da instância EC2 `lab-cassandra-widecolumn` (`t3.large`, Ubuntu 24.04, 20 GB gp3).
+- Lançamento de uma nova instância EC2 `lab-cassandra-widecolumn-AAAA-MM-DD_HH_MI_SS` (`t3.large`, sufixo com a data e hora da execução, Ubuntu 24.04, 20 GB gp3).
 - Instalação do Docker e inicialização do container `cassandra-lab` (code-server + Cassandra).
 - Exibição do IP público e do link de acesso.
 
@@ -150,10 +150,10 @@ O script realiza de forma automatizada:
 
 ### Retomando o laboratório
 
-Se a sessão do AWS Academy expirar, a instância será parada. **Não execute o `launch-lab.sh` novamente.**
+Se a sessão do AWS Academy expirar, a instância será parada. **Não execute o `launch-lab.sh` novamente:** ele criaria uma instância nova, sem o seu trabalho.
 
 1. No Console AWS (`us-east-1`), acesse **EC2** > **Instances**.
-2. Selecione a instância **`lab-cassandra-widecolumn`** e clique em **Instance state** > **Start instance**.
+2. Selecione a sua instância **`lab-cassandra-widecolumn-<data e hora>`** (se houver mais de uma, a mais recente) e clique em **Instance state** > **Start instance**.
 3. Aguarde o status **Running** e copie o novo **Public IPv4 address** (ele muda a cada reinício).
 4. Acesse `http://<NOVO_IP_PUBLICO>:8080`. O container reinicia automaticamente e os dados do Cassandra — inclusive a sua keyspace `lab` — são preservados.
 
@@ -3668,7 +3668,7 @@ cqlsh -e "DROP TABLE lab.produto_similar;"
 
 ## B. Encerrando o ambiente
 
-Ao fim de cada aula, pare a instância: no Console AWS (`us-east-1`), **EC2** > **Instances**, selecione **`lab-cassandra-widecolumn`** e clique em **Instance state** > **Stop instance**. Os dados são preservados, e na próxima aula basta seguir [Retomando o laboratório](#retomando-o-laboratório).
+Ao fim de cada aula, pare a instância: no Console AWS (`us-east-1`), **EC2** > **Instances**, selecione a sua instância **`lab-cassandra-widecolumn-<data e hora>`** e clique em **Instance state** > **Stop instance**. Os dados são preservados, e na próxima aula basta seguir [Retomando o laboratório](#retomando-o-laboratório).
 
 Quando o laboratório tiver terminado de vez, use **Instance state** > **Terminate instance**. Isso apaga a instância e o disco; não há o que preservar.
 
