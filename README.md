@@ -307,8 +307,8 @@ cqlsh -e "DESCRIBE KEYSPACES;"
 ```
 
 ```
-infobarshop    system_auth         system_traces
-infobarbank  system_distributed  system_views
+infobarbank  system_auth         system_traces
+infobarshop  system_distributed  system_views
 system       system_schema       system_virtual_schema
 ```
 
