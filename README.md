@@ -805,7 +805,7 @@ O outro extremo — uma partição que cresce sem limite — é um problema de v
 
 O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 5 — e, na Parte 2, o centro de toda a modelagem. Antes disso, vale organizar quem é quem numa chave. Saia do banco por um instante e pense numa tabela de pedidos guardada como as pastas de um data lake, uma pasta por dia:
 
-![Tabela pedidos_por_dia com PRIMARY KEY (dia, hora, id_pedido), desenhada como três pastas de data lake, uma por dia: uma linha destacada é a primary key (corte horizontal), uma pasta inteira é a partição (corte vertical) e uma seta mostra a ordem das linhas dentro da pasta (clustering key)](diagramas/04b-quem-e-quem.svg)
+![Exemplo, uma abstração do conceito de partição: a tabela imaginária pedidos_por_dia, com PRIMARY KEY (dia, hora, id_pedido), desenhada como três pastas de data lake, uma por dia: uma linha destacada é a primary key (corte horizontal), uma pasta inteira é a partição (corte vertical) e uma seta mostra a ordem das linhas dentro da pasta (clustering key)](diagramas/04b-quem-e-quem.svg)
 
 | | Corte | Papel |
 |---|---|---|
