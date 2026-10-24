@@ -79,7 +79,7 @@ A diferença entre os dois últimos importa: o Cassandra recusa consultas mal mo
 
 **Parte 1 — O Cassandra e o modelo wide-column**
 
-1. [Por que o infobarBank usa Cassandra](#1-por-que-o-infobarbank-usa-cassandra)
+1. [Apache Cassandra](#1-apache-cassandra)
 2. [O cluster](#2-o-cluster)
 3. [Sua primeira tabela](#3-sua-primeira-tabela)
 4. [A chave vira endereço: partição e token](#4-a-chave-vira-endereço-partição-e-token)
@@ -223,17 +223,25 @@ cqlsh -e "SELECT release_version FROM system.local;"
 
 O `-e` executa um comando e sai — é a forma usada em todo o laboratório. Mais sobre ele na seção 3.
 
-**→ Parte 1.** O ambiente está no ar, e o banco já tem dados carregados. Antes de mexer neles, vale entender por que um banco digital escolheria o Cassandra — e o que ele ganha e perde com isso.
+**→ Parte 1.** O ambiente está no ar, e o banco já tem dados carregados. Antes de mexer neles: o que é o Cassandra, para que ele serve e o que ele cobra.
 
 ---
 
 # Parte 1 — O Cassandra e o modelo wide-column
 
-## 1. Por que o infobarBank usa Cassandra
+## 1. Apache Cassandra
 
-### 1.a. Onde o Cassandra se aplica
+### 1.a. O que é: wide-column
 
-Antes do caso deste laboratório, o quadro geral. O Cassandra não é um banco de uso geral: ele se destaca quando três necessidades aparecem juntas — **volume muito alto de escrita**, **latência baixa e previsível** e **distribuição** entre muitos servidores, às vezes em várias regiões, sem parar quando um deles cai.
+O Cassandra é um banco **wide-column**: organiza os dados em linhas agrupadas por uma chave, em que cada linha tem colunas flexíveis — uma linha pode ter colunas que a vizinha não tem — e cada valor é endereçado por **linha, coluna e timestamp**. As linhas são distribuídas entre os vários servidores do cluster.
+
+O próprio projeto se descreve assim, no [repositório oficial](https://github.com/apache/cassandra): *"a highly-scalable partitioned row store"* — um armazenamento de **linhas**, **particionado** entre máquinas. Guarde as duas palavras: são as Partes 1 e 2 deste laboratório.
+
+> Wide-column não é o mesmo que **colunar** (ClickHouse, DuckDB), apesar do nome parecido. A diferença está no disco, e você vai vê-la na seção 5.
+
+### 1.b. Onde o Cassandra se aplica
+
+O Cassandra não é um banco de uso geral: ele se destaca quando três necessidades aparecem juntas — **volume muito alto de escrita**, **latência baixa e previsível** e **distribuição** entre muitos servidores, às vezes em várias regiões, sem parar quando um deles cai.
 
 ![Os três traços comuns, volume de escrita, latência previsível e distribuição, e os casos de uso: IoT, eventos e logs, mensageria, catálogo, perfil e sessão, fraude, e a leitura separada do sistema transacional; embaixo, quando não usar](diagramas/00-casos-de-uso.svg)
 
@@ -250,29 +258,7 @@ Em escala, o caso mais citado é o da Apple, com mais de 75 mil nós e mais de 1
 
 O avesso importa tanto quanto. O Cassandra é a escolha errada quando a aplicação precisa de `JOIN` e de consultas ad hoc; quando precisa de transação ACID envolvendo várias linhas ou tabelas, como um sistema contábil; quando o volume é pequeno, e um banco relacional resolve com muito menos trabalho; ou quando não há equipe para operar um cluster distribuído.
 
-### 1.b. O caso do infobarBank
-
-O **infobarBank** é um banco digital. O coração dele — contas, cartões, transferências — roda num **core bancário** tradicional, um DB2 em mainframe, onde cada operação é uma transação com todas as garantias que dinheiro exige.
-
-O problema é o aplicativo. Milhões de clientes abrem o app ao longo do dia, e cada abertura pede saldo, últimos lançamentos e limite dos cartões. Se cada uma dessas leituras batesse no core, o sistema que precisa processar transferências passaria o dia respondendo a quem só quer olhar o extrato.
-
-A solução do banco é separar as duas coisas:
-
-![O app escreve no core bancário (DB2); um CDC replica cada mudança via Kafka para o Cassandra; o app lê do Cassandra por uma API](diagramas/01-arquitetura-infobarbank.svg)
-
-O app **escreve** no core. Um processo de **CDC** (*change data capture*) captura cada mudança do DB2 e a entrega, via Kafka, ao **Cassandra**. O app **lê** do Cassandra. O core fica com o que faz bem — transação —, e o Cassandra com o que faz bem: responder a um volume enorme de leituras e escritas simples, sempre com o mesmo tempo de resposta.
-
-Este laboratório é a construção do lado direito desse desenho: a keyspace `infobarbank` que o aplicativo consulta.
-
-### 1.c. Wide-column
-
-O Cassandra é um banco **wide-column**: organiza os dados em linhas agrupadas por uma chave, em que cada linha tem colunas flexíveis — uma linha pode ter colunas que a vizinha não tem — e cada valor é endereçado por **linha, coluna e timestamp**. As linhas são distribuídas entre os vários servidores do cluster.
-
-O próprio projeto se descreve assim, no [repositório oficial](https://github.com/apache/cassandra): *"a highly-scalable partitioned row store"* — um armazenamento de **linhas**, **particionado** entre máquinas. Guarde as duas palavras: são as Partes 1 e 2 deste laboratório.
-
-> Wide-column não é o mesmo que **colunar** (ClickHouse, DuckDB), apesar do nome parecido. A diferença está no disco, e você vai vê-la na seção 5.
-
-### 1.d. O que o Cassandra oferece, e o que cobra
+### 1.c. O que o Cassandra oferece, e o que cobra
 
 | Característica | O que significa |
 |---|---|
@@ -284,19 +270,33 @@ O próprio projeto se descreve assim, no [repositório oficial](https://github.c
 | **Hardware comum** | Roda em máquinas convencionais, sem equipamento especial. |
 | **Não substitui o relacional** | Não tem `JOIN`, nem transação entre tabelas, nem consulta livre. |
 
-A última linha é o preço das outras seis, e é por isso que o banco mantém o DB2 no core.
+A última linha é o preço das outras seis. Por isso o Cassandra raramente trabalha sozinho: ele costuma ficar ao lado de um banco relacional, e não no lugar dele.
 
 Há um segundo preço, mais sutil. Em sistemas distribuídos, quando a rede entre servidores falha, é preciso escolher entre responder sempre (**disponibilidade**) ou responder só com o dado garantidamente atual (**consistência**) — é o que diz o **teorema CAP**. O Cassandra escolhe disponibilidade: aceita, por um instante, que uma cópia esteja atrasada em relação à outra, e por isso se diz que ele tem **consistência eventual**. Quanto de consistência cada consulta exige é configurável, e é assunto do laboratório de cluster.
 
-### 1.e. Como ele se encaixa numa arquitetura
+### 1.d. Como ele se encaixa numa arquitetura
 
-O desenho do infobarBank é um padrão de integração comum, mas não o único:
+Ao lado de um banco transacional, o Cassandra aparece em três padrões comuns:
 
-- **Leitura separada da escrita** (*CQRS*): o caso acima — um sistema transacional grava, e o Cassandra serve as leituras.
+- **Leitura separada da escrita** (*CQRS*): um sistema transacional grava, e o Cassandra serve as leituras.
 - **Integração por eventos**: CDC e Kafka alimentando o Cassandra a partir de vários bancos de origem — PostgreSQL, MySQL, SQL Server, Oracle.
 - **Camada de serviço em arquiteturas de dados**: visões pré-calculadas por Spark, em lote ou em streaming, gravadas no Cassandra para consulta rápida.
 
 É, há anos, o banco wide-column mais usado do mercado ([ranking DB-Engines](https://db-engines.com/en/ranking/wide+column+store)).
+
+### 1.e. O caso deste laboratório: infobarBank
+
+Para exercitar tudo isso, este laboratório usa um caso: o **infobarBank**, um banco digital. O coração dele — contas, cartões, transferências — roda num **core bancário** tradicional, um DB2 em mainframe, onde cada operação é uma transação com todas as garantias que dinheiro exige.
+
+O problema é o aplicativo. Milhões de clientes abrem o app ao longo do dia, e cada abertura pede saldo, últimos lançamentos e limite dos cartões. Se cada uma dessas leituras batesse no core, o sistema que precisa processar transferências passaria o dia respondendo a quem só quer olhar o extrato.
+
+A solução do banco é o primeiro padrão de 1.d, a leitura separada da escrita:
+
+![O app escreve no core bancário (DB2); um CDC replica cada mudança via Kafka para o Cassandra; o app lê do Cassandra por uma API](diagramas/01-arquitetura-infobarbank.svg)
+
+O app **escreve** no core. Um processo de **CDC** (*change data capture*) captura cada mudança do DB2 e a entrega, via Kafka, ao **Cassandra**. O app **lê** do Cassandra. O core fica com o que faz bem — transação —, e o Cassandra com o que faz bem: responder a um volume enorme de leituras e escritas simples, sempre com o mesmo tempo de resposta.
+
+Este laboratório é a construção do lado direito desse desenho: a keyspace `infobarbank` que o aplicativo consulta.
 
 ### 1.f. O que existe no nó
 
