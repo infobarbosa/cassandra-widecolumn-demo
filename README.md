@@ -36,44 +36,6 @@ Fora da aula, o mesmo ambiente roda em qualquer máquina com **Docker** e cerca 
 
 ---
 
-## Como o laboratório está organizado
-
-| Parte | Assunto | Keyspace | Tempo |
-|---|---|---|---|
-| **1** | O Cassandra e o modelo wide-column: do cluster à partição | `lab`, criada por você | ~1h15 |
-| **2** | Modelagem de dados: das telas do aplicativo às chaves, e a aplicação | `infobarbank` | ~3h |
-| **3** | Por dentro do disco: commit log, SSTable, compactação, SAI e UCS | `lab` | ~1h45 |
-| — | Desafio | `infobarshop` | — |
-
-São três keyspaces, com papéis distintos:
-
-- **`lab`** — sua bancada de trabalho. Na Parte 1 você constrói nela as primeiras peças do aplicativo do banco: clientes, cartões. Erra à vontade, e apaga no final.
-- **`infobarbank`** — o sistema completo do banco, já carregado. É o caso de uso da Parte 2.
-- **`infobarshop`** — a **infobarShop**, uma loja virtual, também já carregada. É o **espelho** do banco: as mesmas convenções de modelagem em outro domínio. É sobre ela que você trabalha no desafio da seção 12.
-
-Ao longo de todo o laboratório os comandos são executados no **terminal do code-server**, a IDE que roda no navegador junto com o Cassandra. As duas ferramentas que você mais vai usar são:
-
-```
-cqlsh -e "..."     # executa um comando CQL
-nodetool ...       # consulta e opera o nó
-```
-
-Os desenhos deste roteiro ficam na pasta [`diagramas/`](diagramas), cada um em dois formatos: `.svg`, que aparece aqui, e `.excalidraw`, que abre em [excalidraw.com](https://excalidraw.com) para ser editado ou anotado.
-
-### Convenções
-
-Nem todo bloco de código é para ser executado. Há três tipos:
-
-| | |
-|---|---|
-| ```sh``` com prompt limpo | **Execute.** É o caminho do laboratório. |
-| **Não execute** | Exemplo para leitura: descreve um ambiente que não é este — um cluster com vários datacenters, por exemplo. Rodar aqui só devolve erro de configuração. |
-| **Provoque este erro** | Comando que falha de propósito, e a mensagem de erro é a lição. Estes você deve executar. |
-
-A diferença entre os dois últimos importa: o Cassandra recusa consultas mal modeladas com mensagens muito informativas, e aprender a lê-las é metade do trabalho. O que não vale a pena é executar comandos que só falham porque o ambiente de estudo tem um nó.
-
----
-
 ## Índice
 
 [O ambiente](#o-ambiente)
