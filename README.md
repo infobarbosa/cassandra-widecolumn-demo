@@ -202,6 +202,8 @@ O `-e` executa um comando e sai — é a forma usada em todo o laboratório. Mai
 
 O Cassandra é um banco **wide-column**: organiza os dados em linhas agrupadas por uma chave, em que cada linha tem colunas flexíveis — uma linha pode ter colunas que a vizinha não tem — e cada valor é endereçado por **linha, coluna e timestamp**. As linhas são distribuídas entre os vários servidores do cluster.
 
+![Duas partições de cartões de crédito, uma por cliente: a da Marivalda com três linhas e a da Jucilene com uma; cada linha tem só as colunas que recebeu (uma tem apelido, outra bandeira, outra nenhuma das duas); um destaque mostra que cada valor é uma célula endereçada por linha, coluna e timestamp; embaixo, as partições espalhadas por três nós](diagramas/00a-modelo-wide-column.svg)
+
 O próprio projeto se descreve assim, no [repositório oficial](https://github.com/apache/cassandra): *"a highly-scalable partitioned row store"* — um armazenamento de **linhas**, **particionado** entre máquinas. Guarde as duas palavras: o laboratório inteiro gira em torno delas.
 
 > Wide-column não é o mesmo que **colunar** (ClickHouse, DuckDB), apesar do nome parecido. A diferença está no disco, e você vai vê-la na seção 10.

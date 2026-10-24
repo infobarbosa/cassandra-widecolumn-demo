@@ -9,18 +9,19 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 
 | Arquivo | Seção |
 |---|---|
+| `00a-modelo-wide-column` | 1 |
 | `00-casos-de-uso` | 1 |
 | `01-arquitetura-infobarbank` | 1 |
 | `02-coordinator-replicas` | 2 |
 | `03-multi-datacenter` | 2 |
 | `04-ring-token` | 4 |
 | `04b-quem-e-quem` | 4 |
-| `05-colunar-vs-widecolumn` | 5 |
-| `06-caminho-de-escrita` | 5 |
-| `07-compactacao` | 5 |
-| `08-particao-cartoes` | 6 |
-| `09-metodologia` | 7 |
-| `10-modelo-conceitual` | 7 |
-| `11-telas-q1-q7` | 7 |
-| `12-bucket-competencia` | 9 |
-| `13-cliente-quatro-vezes` | 8 |
+| `05-colunar-vs-widecolumn` | 10 |
+| `06-caminho-de-escrita` | 10 |
+| `07-compactacao` | 10 |
+| `08-particao-cartoes` | 5 |
+| `09-metodologia` | 6 |
+| `10-modelo-conceitual` | 6 |
+| `11-telas-q1-q7` | 6 |
+| `12-bucket-competencia` | 8 |
+| `13-cliente-quatro-vezes` | 7 |
