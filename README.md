@@ -815,17 +815,6 @@ O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 5 — e, na Part
 
 Na `lab.cliente`, os três papéis se confundem: a chave tem uma coluna só, que é ao mesmo tempo primary key e partition key, e não existe clustering key. Na seção 5 eles se separam.
 
-### 4.d. O mínimo sobre o disco
-
-A Parte 3 abre os arquivos de dados um a um. Para modelar, basta conhecer o caminho que uma escrita faz, em quatro passos. Eles aparecem em alguns comandos da Parte 2:
-
-1. **A escrita vai para o commit log e para a memtable.** O `INSERT` é gravado no fim de um arquivo sequencial, o **commit log**, que garante o dado se o processo cair, e aplicado numa estrutura em memória, a **memtable**. Nenhum arquivo de dados é tocado nesse momento — por isso a escrita é rápida.
-2. **O flush leva a memtable para o disco.** Quando a memtable enche, ou quando você pede com `nodetool flush`, ela vira um arquivo de dados, a **SSTable**: ordenada pela chave e **imutável** — nunca mais é alterada.
-3. **A compactação junta SSTables.** Cada flush cria uma SSTable nova, e a mesma partição acaba espalhada por várias. Em segundo plano, o Cassandra as funde numa só, guardando a versão mais recente de cada valor. `nodetool compact` força isso.
-4. **`DELETE` também é escrita.** Apagar grava um marcador, o **tombstone**, que só desaparece numa compactação, dias depois.
-
-O que importa para a modelagem: o tamanho de uma partição se mede nas SSTables, e uma partição grande pesa em cada flush, em cada compactação e em cada leitura.
-
 **→ Próxima seção.** Até aqui cada partição de `lab.cliente` teve uma linha só — a forma mais simples, e a menos "wide" que existe. Na próxima seção uma partição vai ganhar várias linhas.
 
 ---
@@ -1244,7 +1233,7 @@ SELECT count(*) FROM infobarbank.cliente_por_telefone;"
 
 Cinquenta em cada, com um aviso em cada — `Aggregation query used without partition key`, que é o Cassandra dizendo que para contar ele varreu a tabela inteira. Guarde o aviso: até `count(*)` é uma varredura.
 
-Agora o espaço em disco. As keyspaces do curso foram carregadas há pouco, e parte delas pode estar ainda na memtable — sem arquivo no disco, como em 4.d. Force a descida antes de medir:
+Agora o espaço em disco. O Cassandra guarda as escritas recentes em memória e só depois as grava em arquivo (o caminho completo é a seção 10). As keyspaces do curso foram carregadas há pouco, e parte delas pode ainda não ter chegado ao disco. Force a gravação antes de medir:
 
 ```sh
 # 7.c.2
@@ -1848,7 +1837,7 @@ cqlsh -e "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, 
 
 > Duas coisas sobre esse `awk`. A coluna `data_hora` é gerada como **epoch em milissegundos** (`1451606400000` é 1º de janeiro de 2016), formato que o `COPY` aceita para colunas `timestamp` — assim não dependemos de nenhuma extensão de `awk` para formatar datas. E o `LC_ALL=C` não é enfeite: em locale brasileiro, `%.2f` imprime `395,46` com vírgula, o que quebraria o CSV em uma coluna a mais.
 
-Force a descida para o disco:
+Grave em disco o que ainda está em memória:
 
 ```sh
 # 8.f.4
@@ -1856,7 +1845,7 @@ nodetool flush lab lancamento_sem_bucket
 
 ```
 
-E veja quantas SSTables a tabela tem:
+E veja quantos arquivos de dados — as **SSTables** — a tabela tem:
 
 ```sh
 # 8.f.5
@@ -1869,7 +1858,7 @@ ls -1 /var/lib/cassandra/data/lab/lancamento_sem_bucket-*/*-Data.db
 .../nb-2-big-Data.db
 ```
 
-Duas, e você só pediu um flush. A outra o Cassandra fez sozinho, no meio do `COPY`: 200 mil linhas não couberam no espaço reservado às memtables, e ele descarregou a maior delas para liberar memória. É o flush de 4.d acontecendo sem ninguém pedir (a seção 10 mostra esse ciclo em detalhe) — e agora a mesma partição está em dois arquivos. Para medi-la inteira, junte os dois:
+Duas, e você só pediu uma gravação: no meio do `COPY`, a memória reservada às escritas encheu e o Cassandra gravou parte dela por conta própria (a seção 10 mostra esse ciclo em detalhe). A mesma partição ficou em dois arquivos. Para medi-la inteira, junte os dois com uma compactação:
 
 ```sh
 # 8.f.6
@@ -1965,7 +1954,7 @@ nodetool tablehistograms infobarbank lancamentos_por_periodo
 454 mil células numa partição contra 179, e uma partição que precisa de uma SSTable inteira para ser lida contra uma que o Cassandra resolve tão rápido que a latência fica abaixo da resolução do instrumento. O problema da partição gigante não está na leitura pontual; está em tudo que precisa **atravessá-la ou movê-la**:
 
 - **Hotspot.** A partição inteira mora nas mesmas réplicas. Um cliente muito ativo concentra carga em poucos nós, e nenhum rebalanceamento resolve, porque partição não se divide.
-- **Compactação e repair.** As duas operam sobre partições inteiras. Uma partição de gigabytes pressiona heap e GC em cada ciclo.
+- **Compactação e repair.** A compactação, que você acabou de forçar, e o repair, que sincroniza as réplicas, operam sobre partições inteiras. Uma partição de gigabytes pressiona heap e GC em cada ciclo.
 - **Leitura completa.** Em escala, ela deixa de ser lenta e passa a estourar o `read_request_timeout` — o servidor desiste antes de terminar.
 
 A regra prática é manter partições **abaixo de ~100 MB**. Nossa partição de 10 MB está confortável; o que interessa é a trajetória: dez anos deram 10 MB para 200 mil linhas, então um cliente com dez vezes mais movimento encosta no teto, e um cliente corporativo o estoura.
