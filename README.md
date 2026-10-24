@@ -42,13 +42,13 @@ Fora da aula, o mesmo ambiente roda em qualquer máquina com **Docker** e cerca 
 |---|---|---|---|
 | **1** | O Cassandra e o modelo wide-column: do cluster ao dado no disco | `lab`, criada por você | ~2h30 |
 | **2** | Modelagem de dados: das telas do aplicativo às chaves, e a aplicação | `infobarbank` | ~3h30 |
-| — | Desafio | `ecommerce` | — |
+| — | Desafio | `infobarshop` | — |
 
 São três keyspaces, com papéis distintos:
 
 - **`lab`** — sua bancada de trabalho. Na Parte 1 você constrói nela as primeiras peças do aplicativo do banco: clientes, cartões. Erra à vontade, e apaga no final.
 - **`infobarbank`** — o sistema completo do banco, já carregado. É o caso de uso da Parte 2.
-- **`ecommerce`** — uma loja, também já carregada. É o **espelho** do banco: as mesmas convenções de modelagem em outro domínio. É sobre ela que você trabalha no desafio da seção 12.
+- **`infobarshop`** — a **infobarShop**, uma loja virtual, também já carregada. É o **espelho** do banco: as mesmas convenções de modelagem em outro domínio. É sobre ela que você trabalha no desafio da seção 12.
 
 Ao longo de todo o laboratório os comandos são executados no **terminal do code-server**, a IDE que roda no navegador junto com o Cassandra. As duas ferramentas que você mais vai usar são:
 
@@ -171,9 +171,9 @@ cat /var/log/lab/carga.log
 ```
 [carga] Cassandra pronto.
 Carregando infobarbank (log: /var/log/lab/carga-infobarbank.log)...
-Carregando ecommerce (log: /var/log/lab/carga-ecommerce.log)...
+Carregando infobarshop (log: /var/log/lab/carga-infobarshop.log)...
 infobarbank: ok
-ecommerce: ok
+infobarshop: ok
 Keyspaces prontas.
 ```
 
@@ -191,12 +191,12 @@ curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo
 ```
 Keyspaces
   ✓ infobarbank: 12 tabelas (modelagem de dados)
-  ✓ ecommerce: 9 tabelas (desafio)
+  ✓ infobarshop: 9 tabelas (desafio)
   ! lab: ainda não criada — você a cria na Parte 1
 
 Dados
   ✓ infobarbank.cliente: 50 clientes
-  ✓ ecommerce.pedido_detalhe: 12004 pedidos
+  ✓ infobarshop.pedido_detalhe: 12004 pedidos
 
 Resultado
   Ambiente pronto.
@@ -307,12 +307,12 @@ cqlsh -e "DESCRIBE KEYSPACES;"
 ```
 
 ```
-ecommerce    system_auth         system_traces
+infobarshop    system_auth         system_traces
 infobarbank  system_distributed  system_views
 system       system_schema       system_virtual_schema
 ```
 
-Duas keyspaces são do curso — `infobarbank` e `ecommerce`. As outras seis são do próprio Cassandra: `system_schema` guarda a definição das suas tabelas, `system_auth` os usuários, `system_views` e `system_virtual_schema` expõem métricas internas como se fossem tabelas. Você vai consultar algumas delas ao longo do laboratório.
+Duas keyspaces são do curso — `infobarbank` e `infobarshop`. As outras seis são do próprio Cassandra: `system_schema` guarda a definição das suas tabelas, `system_auth` os usuários, `system_views` e `system_virtual_schema` expõem métricas internas como se fossem tabelas. Você vai consultar algumas delas ao longo do laboratório.
 
 **→ Próxima seção.** Um banco que atende milhões de clientes não cabe num servidor. Como o Cassandra distribui os dados entre vários — e o que acontece quando um deles cai?
 
@@ -956,7 +956,7 @@ grep -c --text 'MARIVALDA' /var/lib/cassandra/commitlog/*.log
 /var/lib/cassandra/commitlog/CommitLog-7-1791626562386.log:0
 ```
 
-Nove ocorrências, e você inseriu a Marivalda uma vez. O motivo: **o commit log é do nó, não da tabela**. Ele recebe as escritas de todas as tabelas de todas as keyspaces, em um único fluxo sequencial — e a Marivalda também é cliente do `infobarbank` e da loja `ecommerce`, cada um com suas tabelas.
+Nove ocorrências, e você inseriu a Marivalda uma vez. O motivo: **o commit log é do nó, não da tabela**. Ele recebe as escritas de todas as tabelas de todas as keyspaces, em um único fluxo sequencial — e a Marivalda também é cliente do `infobarbank` e da infobarShop (`infobarshop`), cada um com suas tabelas.
 
 Isso responde por que a escrita não fica mais lenta conforme você cria tabelas: há um só arquivo recebendo tudo, e nunca uma busca por posição.
 
@@ -1974,10 +1974,10 @@ Agora que a técnica tem nome, ela fica visível em quase toda tabela que você 
 | O mesmo dado, repetido em | Para atender |
 |---|---|
 | `infobarbank.cliente` + `cliente_por_cpf` + `cliente_por_email` + `cliente_por_telefone` | login por id, por CPF, por e-mail, por telefone |
-| `ecommerce.cliente` + `cliente_por_cpf` + `cliente_por_email` | o mesmo, na loja |
+| `infobarshop.cliente` + `cliente_por_cpf` + `cliente_por_email` | o mesmo, na infobarShop |
 | `lancamentos_detalhe` × as quatro tabelas de lançamento | a tela de detalhe e as telas de lista (9.c e 9.g) |
 | `lancamentos_por_periodo` + `_por_produto` + `_por_status` + `_por_tipo` | os mesmos lançamentos, quatro filtros (9.g) |
-| `pedido_detalhe` × as tabelas de pedido do `ecommerce` | idem, na loja |
+| `pedido_detalhe` × as tabelas de pedido do `infobarshop` | idem, na infobarShop |
 
 Não existe uma única tabela do `infobarbank` cujo conteúdo não apareça em outra. **É a regra, não a exceção.**
 
@@ -2603,8 +2603,8 @@ Agora que a técnica tem nome, ela fica visível em todo o material:
 | Tabela | Partition key | Bucket |
 |---|---|---|
 | `infobarbank.lancamentos_por_periodo` e as três irmãs | `(id_cliente, competencia)` | mês |
-| `ecommerce.pedidos_por_periodo`, `_status` e `_forma_pagamento` | `(id_cliente, competencia)` | mês |
-| `ecommerce.pedidos_por_produto` | `(id_cliente, produto)` | **nenhum** |
+| `infobarshop.pedidos_por_periodo`, `_status` e `_forma_pagamento` | `(id_cliente, competencia)` | mês |
+| `infobarshop.pedidos_por_produto` | `(id_cliente, produto)` | **nenhum** |
 
 A última é a interessante, porque é a exceção. Ela não tem bucket, e isso é escolha, não esquecimento.
 
@@ -2614,7 +2614,7 @@ Sem bucket, quem limita o tamanho é a cardinalidade natural do par: um cliente 
 
 ```sh
 # 9.f.17
-cqlsh -e "SELECT count(*) FROM ecommerce.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
+cqlsh -e "SELECT count(*) FROM infobarshop.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
 
 ```
 
@@ -3407,23 +3407,23 @@ Tudo o que você viu até aqui cabe numa lista curta de erros. São os que mais 
 
 Você acabou de percorrer o modelo de um banco digital, das sete perguntas do fluxo aplicacional até as doze tabelas que as respondem. Agora o exercício inverso: um modelo pronto, feito pelo mesmo método, e a sua tarefa é **reconstruir qual consulta motivou cada tabela** — em outra empresa, sem receber o mapa.
 
-A keyspace `ecommerce` é uma **loja virtual**, já carregada. Ela foi modelada com as mesmas convenções do `infobarbank`: nomes no padrão `entidade_por_critério`, ordenação física por data decrescente, uma tabela dedicada à leitura pontual pelo id — e, acima de tudo, a regra que governa toda partition key deste laboratório: **ela é sempre algo que a aplicação tem em mãos**.
+A keyspace `infobarshop` é a **infobarShop**, uma loja virtual, já carregada. Ela foi modelada com as mesmas convenções do `infobarbank`: nomes no padrão `entidade_por_critério`, ordenação física por data decrescente, uma tabela dedicada à leitura pontual pelo id — e, acima de tudo, a regra que governa toda partition key deste laboratório: **ela é sempre algo que a aplicação tem em mãos**.
 
 Repare que a regra não diz "o cliente". Diz *o que a aplicação tem*. Às vezes é o cliente logado, às vezes é o CPF que o atendente anotou, às vezes é o id que veio da lista anterior. Quando você for justificar cada escolha, é essa a pergunta a fazer primeiro.
 
-A cliente é a mesma pessoa. No banco ela é `2b162060`; na loja, **`CLI-000001`** — mesmo nome, mesmo CPF, id próprio de cada sistema. É por isso que as duas empresas precisam de uma tabela de acesso por CPF.
+A cliente é a mesma pessoa. No infobarBank ela é `2b162060`; na infobarShop, **`CLI-000001`** — mesmo nome, mesmo CPF, id próprio de cada sistema. É por isso que as duas empresas precisam de uma tabela de acesso por CPF.
 
 ### 12.a. Explorando
 
 ```sh
 # 12.a.1
-cqlsh -e "DESCRIBE KEYSPACE ecommerce;"
+cqlsh -e "DESCRIBE KEYSPACE infobarshop;"
 
 ```
 
 ```sh
 # 12.a.2
-cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecommerce';"
+cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='infobarshop';"
 
 ```
 
@@ -3447,7 +3447,7 @@ Descubra as competências disponíveis — aqui também os dados são relativos 
 
 ```sh
 # 12.a.3
-cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM ecommerce.pedidos_por_periodo;"
+cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM infobarshop.pedidos_por_periodo;"
 
 ```
 
@@ -3492,7 +3492,7 @@ Use estas perguntas para conferir cada resposta:
 
 Não precisam de código.
 
-1. A loja quer uma tela com **os dez pedidos de maior valor** de uma cliente numa competência. Nenhuma das nove tabelas responde a isso com eficiência. Por quê, e o que precisaria existir?
+1. A infobarShop quer uma tela com **os dez pedidos de maior valor** de uma cliente numa competência. Nenhuma das nove tabelas responde a isso com eficiência. Por quê, e o que precisaria existir?
 2. `pedidos_por_produto` particiona por `(id_cliente, produto)` — é a única tabela de pedidos sem bucket. O que aconteceria com ela se a partition key fosse `(id_cliente, produto, competencia)`? Ganha-se o quê, e perde-se qual consulta?
 
 ## Referências
@@ -3715,7 +3715,7 @@ DIR=$(ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1)
 
 ```
 
-### `keyspace ecommerce does not exist` (ou `infobarbank`)
+### `keyspace infobarshop does not exist` (ou `infobarbank`)
 
 A carga do primeiro boot ainda não terminou, ou falhou. Veja o que ela diz:
 
@@ -3731,7 +3731,9 @@ carregar-keyspaces
 
 ```
 
-Ela recria `infobarbank` e `ecommerce` do zero e não toca na sua keyspace `lab`.
+Ela recria `infobarbank` e `infobarshop` do zero e não toca na sua keyspace `lab`.
+
+Se o `DESCRIBE KEYSPACES` mostrar uma keyspace `ecommerce` no lugar de `infobarshop`, o seu ambiente foi criado com uma versão anterior da imagem. Crie um ambiente novo rodando o `launch-lab.sh` de novo (seção 1); na execução local, rode `docker compose down` e `docker compose pull` antes de subir de novo.
 
 ### Os resultados não batem com o texto
 
