@@ -87,7 +87,7 @@ verifica_keyspace() {
 }
 
 verifica_keyspace infobarbank 12 "modelagem de dados"
-verifica_keyspace ecommerce    9 "desafio"
+verifica_keyspace infobarshop  9 "desafio"
 
 LAB=$(valor "SELECT count(*) FROM system_schema.tables WHERE keyspace_name='lab';")
 if [ -n "$LAB" ] && [ "$LAB" != "0" ]; then
@@ -100,18 +100,18 @@ titulo "Dados"
 CLIENTES=$(valor "SELECT count(*) FROM infobarbank.cliente;")
 [ "${CLIENTES:-0}" -gt 0 ] && ok "infobarbank.cliente: $CLIENTES clientes" || falha "infobarbank.cliente vazia"
 
-PEDIDOS=$(valor "SELECT count(*) FROM ecommerce.pedido_detalhe;")
-[ "${PEDIDOS:-0}" -gt 0 ] && ok "ecommerce.pedido_detalhe: $PEDIDOS pedidos" || falha "ecommerce.pedido_detalhe vazia"
+PEDIDOS=$(valor "SELECT count(*) FROM infobarshop.pedido_detalhe;")
+[ "${PEDIDOS:-0}" -gt 0 ] && ok "infobarshop.pedido_detalhe: $PEDIDOS pedidos" || falha "infobarshop.pedido_detalhe vazia"
 
 # As competências são relativas à data em que o ambiente foi criado, por isso
 # são descobertas e não fixadas no texto do laboratório.
 titulo "Competências disponíveis"
 COMP_BANCO=$(cql "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_periodo;" \
     | grep '2b162060' | awk '{print $3}' | sort | tr '\n' ' ')
-COMP_LOJA=$(cql "SELECT DISTINCT id_cliente, competencia FROM ecommerce.pedidos_por_periodo;" \
+COMP_SHOP=$(cql "SELECT DISTINCT id_cliente, competencia FROM infobarshop.pedidos_por_periodo;" \
     | grep 'CLI-000001' | awk '{print $3}' | sort | tr '\n' ' ')
 [ -n "$COMP_BANCO" ] && ok "infobarbank, Marivalda (2b162060): $COMP_BANCO" || aviso "nenhuma competência no infobarbank"
-[ -n "$COMP_LOJA" ]  && ok "ecommerce, Marivalda (CLI-000001): $COMP_LOJA"  || aviso "nenhuma competência no ecommerce"
+[ -n "$COMP_SHOP" ]  && ok "infobarshop, Marivalda (CLI-000001): $COMP_SHOP"  || aviso "nenhuma competência no infobarshop"
 
 titulo "Resultado"
 if [ "$FALHAS" -eq 0 ]; then

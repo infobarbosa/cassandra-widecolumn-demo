@@ -42,13 +42,13 @@ Fora da aula, o mesmo ambiente roda em qualquer máquina com **Docker** e cerca 
 |---|---|---|---|
 | **1** | O Cassandra e o modelo wide-column: do cluster ao dado no disco | `lab`, criada por você | ~2h30 |
 | **2** | Modelagem de dados: das telas do aplicativo às chaves, e a aplicação | `infobarbank` | ~3h30 |
-| — | Desafio | `ecommerce` | — |
+| — | Desafio | `infobarshop` | — |
 
 São três keyspaces, com papéis distintos:
 
 - **`lab`** — sua bancada de trabalho. Na Parte 1 você constrói nela as primeiras peças do aplicativo do banco: clientes, cartões. Erra à vontade, e apaga no final.
 - **`infobarbank`** — o sistema completo do banco, já carregado. É o caso de uso da Parte 2.
-- **`ecommerce`** — uma loja, também já carregada. É o **espelho** do banco: as mesmas convenções de modelagem em outro domínio. É sobre ela que você trabalha no desafio da seção 12.
+- **`infobarshop`** — a **infobarShop**, uma loja virtual, também já carregada. É o **espelho** do banco: as mesmas convenções de modelagem em outro domínio. É sobre ela que você trabalha no desafio da seção 12.
 
 Ao longo de todo o laboratório os comandos são executados no **terminal do code-server**, a IDE que roda no navegador junto com o Cassandra. As duas ferramentas que você mais vai usar são:
 
@@ -171,9 +171,9 @@ cat /var/log/lab/carga.log
 ```
 [carga] Cassandra pronto.
 Carregando infobarbank (log: /var/log/lab/carga-infobarbank.log)...
-Carregando ecommerce (log: /var/log/lab/carga-ecommerce.log)...
+Carregando infobarshop (log: /var/log/lab/carga-infobarshop.log)...
 infobarbank: ok
-ecommerce: ok
+infobarshop: ok
 Keyspaces prontas.
 ```
 
@@ -191,12 +191,12 @@ curl -sS https://raw.githubusercontent.com/infobarbosa/cassandra-widecolumn-demo
 ```
 Keyspaces
   ✓ infobarbank: 12 tabelas (modelagem de dados)
-  ✓ ecommerce: 9 tabelas (desafio)
+  ✓ infobarshop: 9 tabelas (desafio)
   ! lab: ainda não criada — você a cria na Parte 1
 
 Dados
   ✓ infobarbank.cliente: 50 clientes
-  ✓ ecommerce.pedido_detalhe: 12004 pedidos
+  ✓ infobarshop.pedido_detalhe: 12004 pedidos
 
 Resultado
   Ambiente pronto.
@@ -307,12 +307,12 @@ cqlsh -e "DESCRIBE KEYSPACES;"
 ```
 
 ```
-ecommerce    system_auth         system_traces
-infobarbank  system_distributed  system_views
+infobarbank  system_auth         system_traces
+infobarshop  system_distributed  system_views
 system       system_schema       system_virtual_schema
 ```
 
-Duas keyspaces são do curso — `infobarbank` e `ecommerce`. As outras seis são do próprio Cassandra: `system_schema` guarda a definição das suas tabelas, `system_auth` os usuários, `system_views` e `system_virtual_schema` expõem métricas internas como se fossem tabelas. Você vai consultar algumas delas ao longo do laboratório.
+Duas keyspaces são do curso — `infobarbank` e `infobarshop`. As outras seis são do próprio Cassandra: `system_schema` guarda a definição das suas tabelas, `system_auth` os usuários, `system_views` e `system_virtual_schema` expõem métricas internas como se fossem tabelas. Você vai consultar algumas delas ao longo do laboratório.
 
 **→ Próxima seção.** Um banco que atende milhões de clientes não cabe num servidor. Como o Cassandra distribui os dados entre vários — e o que acontece quando um deles cai?
 
@@ -956,7 +956,7 @@ grep -c --text 'MARIVALDA' /var/lib/cassandra/commitlog/*.log
 /var/lib/cassandra/commitlog/CommitLog-7-1791626562386.log:0
 ```
 
-Nove ocorrências, e você inseriu a Marivalda uma vez. O motivo: **o commit log é do nó, não da tabela**. Ele recebe as escritas de todas as tabelas de todas as keyspaces, em um único fluxo sequencial — e a Marivalda também é cliente do `infobarbank` e da loja `ecommerce`, cada um com suas tabelas.
+Nove ocorrências, e você inseriu a Marivalda uma vez. O motivo: **o commit log é do nó, não da tabela**. Ele recebe as escritas de todas as tabelas de todas as keyspaces, em um único fluxo sequencial — e a Marivalda também é cliente do `infobarbank` e da infobarShop (`infobarshop`), cada um com suas tabelas.
 
 Isso responde por que a escrita não fica mais lenta conforme você cria tabelas: há um só arquivo recebendo tudo, e nunca uma busca por posição.
 
@@ -1974,10 +1974,10 @@ Agora que a técnica tem nome, ela fica visível em quase toda tabela que você 
 | O mesmo dado, repetido em | Para atender |
 |---|---|
 | `infobarbank.cliente` + `cliente_por_cpf` + `cliente_por_email` + `cliente_por_telefone` | login por id, por CPF, por e-mail, por telefone |
-| `ecommerce.cliente` + `cliente_por_cpf` + `cliente_por_email` | o mesmo, na loja |
+| `infobarshop.cliente` + `cliente_por_cpf` + `cliente_por_email` | o mesmo, na infobarShop |
 | `lancamentos_detalhe` × as quatro tabelas de lançamento | a tela de detalhe e as telas de lista (9.c e 9.g) |
 | `lancamentos_por_periodo` + `_por_produto` + `_por_status` + `_por_tipo` | os mesmos lançamentos, quatro filtros (9.g) |
-| `pedido_detalhe` × as tabelas de pedido do `ecommerce` | idem, na loja |
+| `pedido_detalhe` × as tabelas de pedido do `infobarshop` | idem, na infobarShop |
 
 Não existe uma única tabela do `infobarbank` cujo conteúdo não apareça em outra. **É a regra, não a exceção.**
 
@@ -2603,8 +2603,8 @@ Agora que a técnica tem nome, ela fica visível em todo o material:
 | Tabela | Partition key | Bucket |
 |---|---|---|
 | `infobarbank.lancamentos_por_periodo` e as três irmãs | `(id_cliente, competencia)` | mês |
-| `ecommerce.pedidos_por_periodo`, `_status` e `_forma_pagamento` | `(id_cliente, competencia)` | mês |
-| `ecommerce.pedidos_por_produto` | `(id_cliente, produto)` | **nenhum** |
+| `infobarshop.pedidos_por_periodo`, `_status` e `_forma_pagamento` | `(id_cliente, competencia)` | mês |
+| `infobarshop.pedidos_por_produto` | `(id_cliente, produto)` | **nenhum** |
 
 A última é a interessante, porque é a exceção. Ela não tem bucket, e isso é escolha, não esquecimento.
 
@@ -2614,7 +2614,7 @@ Sem bucket, quem limita o tamanho é a cardinalidade natural do par: um cliente 
 
 ```sh
 # 9.f.17
-cqlsh -e "SELECT count(*) FROM ecommerce.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
+cqlsh -e "SELECT count(*) FROM infobarshop.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
 
 ```
 
@@ -3407,23 +3407,23 @@ Tudo o que você viu até aqui cabe numa lista curta de erros. São os que mais 
 
 Você acabou de percorrer o modelo de um banco digital, das sete perguntas do fluxo aplicacional até as doze tabelas que as respondem. Agora o exercício inverso: um modelo pronto, feito pelo mesmo método, e a sua tarefa é **reconstruir qual consulta motivou cada tabela** — em outra empresa, sem receber o mapa.
 
-A keyspace `ecommerce` é uma **loja virtual**, já carregada. Ela foi modelada com as mesmas convenções do `infobarbank`: nomes no padrão `entidade_por_critério`, ordenação física por data decrescente, uma tabela dedicada à leitura pontual pelo id — e, acima de tudo, a regra que governa toda partition key deste laboratório: **ela é sempre algo que a aplicação tem em mãos**.
+A keyspace `infobarshop` é a **infobarShop**, uma loja virtual, já carregada. Ela foi modelada com as mesmas convenções do `infobarbank`: nomes no padrão `entidade_por_critério`, ordenação física por data decrescente, uma tabela dedicada à leitura pontual pelo id — e, acima de tudo, a regra que governa toda partition key deste laboratório: **ela é sempre algo que a aplicação tem em mãos**.
 
 Repare que a regra não diz "o cliente". Diz *o que a aplicação tem*. Às vezes é o cliente logado, às vezes é o CPF que o atendente anotou, às vezes é o id que veio da lista anterior. Quando você for justificar cada escolha, é essa a pergunta a fazer primeiro.
 
-A cliente é a mesma pessoa. No banco ela é `2b162060`; na loja, **`CLI-000001`** — mesmo nome, mesmo CPF, id próprio de cada sistema. É por isso que as duas empresas precisam de uma tabela de acesso por CPF.
+A cliente é a mesma pessoa. No infobarBank ela é `2b162060`; na infobarShop, **`CLI-000001`** — mesmo nome, mesmo CPF, id próprio de cada sistema. É por isso que as duas empresas precisam de uma tabela de acesso por CPF.
 
 ### 12.a. Explorando
 
 ```sh
 # 12.a.1
-cqlsh -e "DESCRIBE KEYSPACE ecommerce;"
+cqlsh -e "DESCRIBE KEYSPACE infobarshop;"
 
 ```
 
 ```sh
 # 12.a.2
-cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='ecommerce';"
+cqlsh -e "SELECT table_name FROM system_schema.tables WHERE keyspace_name='infobarshop';"
 
 ```
 
@@ -3447,7 +3447,7 @@ Descubra as competências disponíveis — aqui também os dados são relativos 
 
 ```sh
 # 12.a.3
-cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM ecommerce.pedidos_por_periodo;"
+cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM infobarshop.pedidos_por_periodo;"
 
 ```
 
@@ -3455,7 +3455,7 @@ Use uma competência **fechada** com bom volume. Nos exemplos deste desafio apar
 
 ### 12.b. As consultas
 
-Escreva, para cada item, a consulta CQL que o responde. Todas as respostas existem: **não é necessário criar nenhuma tabela**.
+Escreva, para cada item, a consulta CQL que o responde. De Q1' a Q8', cada consulta tem uma tabela pronta que a responde: **não é necessário criar nenhuma tabela**. Q9' e Q10' são de outra natureza, e descobrir qual é faz parte do desafio (veja 12.c).
 
 | | Consulta |
 |---|---|
@@ -3472,7 +3472,7 @@ Escreva, para cada item, a consulta CQL que o responde. Todas as respostas exist
 
 ### 12.c. O que você deve conseguir responder
 
-Para cada consulta, três coisas:
+Para cada consulta de Q1' a Q8', três coisas:
 
 1. **O comando CQL**, executado e funcionando.
 2. **O resultado** que ele devolveu.
@@ -3480,19 +3480,80 @@ Para cada consulta, três coisas:
 
 A terceira é a que mostra se você entendeu. Duas tabelas diferentes podem devolver o mesmo resultado nesta base pequena; só uma delas responde àquela pergunta com uma leitura pontual em uma partição. A justificativa deve mencionar a partition key e, quando for o caso, a clustering key.
 
-Use estas perguntas para conferir cada resposta:
+Use estas perguntas para conferir cada resposta de Q1' a Q8':
 
 - A consulta informa a **partition key completa**? Nenhuma resposta deve precisar de `ALLOW FILTERING`.
 - A tabela escolhida já entrega o resultado **na ordem pedida**? Nenhuma resposta deve precisar de `ORDER BY`.
 - A justificativa percorre, ao contrário, o caminho da seção 9: *desta consulta, o que eu tenho em mãos? logo, qual partition key? logo, qual tabela?*
 
-> Se alguma resposta sua precisar de `ALLOW FILTERING` ou de `ORDER BY`, ela está usando a tabela errada. Releia a seção 9.
+> Se alguma resposta sua de Q1' a Q8' precisar de `ALLOW FILTERING` ou de `ORDER BY`, ela está usando a tabela errada. Releia a seção 9.
+
+#### As duas consultas analíticas
+
+Q9' e Q10' não falam de uma cliente: falam de **todas as vendas** de um estado, ou de um produto, num dia. Para elas, a pergunta da seção 9 — *o que eu tenho em mãos?* — tem outra resposta, e é isso que você precisa mostrar. Para cada uma, quatro coisas:
+
+1. **A tentativa.** A consulta que você escreveria, numa das nove tabelas, e o erro que o Cassandra devolve.
+2. **O custo.** A mesma consulta com `ALLOW FILTERING` e `TRACING ON`, como na seção 9.i. Anote quantas linhas foram lidas para devolver quantas.
+3. **O porquê.** Qual coluna está na partition key de cada uma das nove tabelas, e por que nenhuma delas é algo que essas consultas têm em mãos.
+4. **Uma proposta.** O que precisaria existir para responder bem: a `PRIMARY KEY` de uma tabela nova (sem criá-la), o risco que ela traz — pense em quantas vendas um único estado concentra num dia de Black Friday — e se essa pergunta deveria mesmo ser respondida pelo Cassandra (seções 1 e 10).
+
+<details>
+<summary><b>Solução de referência das consultas analíticas</b> (tente antes de abrir)</summary>
+
+Esta é **uma** resposta possível; outras propostas são defensáveis, desde que justificadas. Troque `2026-05-15` por um dia de uma competência fechada do seu ambiente.
+
+**1. A tentativa.** A única tabela que tem todos os pedidos com `uf` e `produto` é a `pedido_detalhe`:
+
+```sh
+cqlsh -e "SELECT * FROM infobarshop.pedido_detalhe WHERE uf='SP' AND data_criacao >= '2026-05-15' AND data_criacao < '2026-05-16';"
+
+```
+
+```
+InvalidRequest: ... "Cannot execute this query as it might involve data filtering..."
+```
+
+A Q10' é igual, com `produto='NOTEBOOK'` no lugar de `uf='SP'`. Tentar as tabelas de pedidos por cliente dá o mesmo erro: sem `id_cliente`, nenhuma delas sabe qual partição ler.
+
+**2. O custo.**
+
+```sh
+cqlsh -e "TRACING ON; SELECT count(*) FROM infobarshop.pedido_detalhe WHERE uf='SP' AND data_criacao >= '2026-05-15' AND data_criacao < '2026-05-16' ALLOW FILTERING;"
+
+```
+
+No rastro, `Submitting range requests on 17 ranges` e `Read 12004 live rows`: o Cassandra varreu **a tabela inteira** para devolver um punhado de pedidos — às vezes nenhum. É a varredura da seção 9.i, agora sobre todos os pedidos da loja.
+
+**3. O porquê.** As partition keys das nove tabelas são `id_cliente`, `cpf`, `email`, `(id_cliente, competencia)`, `(id_cliente, produto)` e `id_pedido`. Todas identificam **uma cliente** ou **um pedido**, porque o esquema serve ao painel da cliente: é isso que aquela aplicação tem em mãos. A Q9' tem em mãos um estado e um dia; a Q10', um produto e um dia. Nenhuma tabela começa por isso, e a regra da seção 9 não tem exceção: sem a partition key, não há leitura pontual.
+
+**4. A proposta.** Se a consulta for de uma tela que roda a toda hora, ela pede a sua própria tabela, gravada junto com as outras a cada pedido:
+
+```sql
+CREATE TABLE infobarshop.pedidos_por_uf_dia (
+    uf text, dia date, data_criacao timestamp, id_pedido text,
+    id_cliente text, produto text, valor_total float, ...,
+    PRIMARY KEY ((uf, dia), data_criacao, id_pedido)
+) WITH CLUSTERING ORDER BY (data_criacao DESC, id_pedido ASC);
+```
+
+A Q10' é a mesma ideia, com `((produto, dia), data_criacao, id_pedido)`. O `dia` na partition key é o bucket da seção 9.f: sem ele, a partição de SP cresceria para sempre.
+
+O risco é a **partição quente**. As partições não têm o mesmo tamanho: SP concentra boa parte das vendas, e numa Black Friday a partição `('SP', dia)` recebe uma fração enorme das escritas da loja inteira, todas no mesmo conjunto de réplicas. A saída é um bucket mais fino, `((uf, dia, hora), ...)`, ou sintético, `((uf, dia, bucket), ...)` com `bucket = hash(id_pedido) % N`. Em troca, a leitura do dia passa a juntar 24 (ou N) partições.
+
+Há duas alternativas, e a pergunta decisiva é **quem faz essa consulta, e com que frequência**:
+
+- **SAI (seção 10).** Índices em `uf`, `produto` e `data_criacao` na `pedido_detalhe` respondem as duas sem `ALLOW FILTERING` e sem tabela nova. Mas, sem partition key, a consulta ainda pergunta a todos os nós do cluster. Serve para uma consulta ocasional, não para uma tela de alto volume.
+- **Fora do Cassandra (seção 1).** "Vendas de SP no dia" e "vendas de NOTEBOOK no dia" são perguntas de **relatório**, de quem gerencia a loja, não da cliente no painel. O caminho natural é levar os pedidos por CDC para uma camada analítica (um banco colunar, Spark), que agrega bilhões de linhas por qualquer coluna. O Cassandra continua fazendo o que faz bem: servir o painel, uma partição por vez.
+
+A melhor resposta não escolhe uma das três por gosto: justifica a escolha pelo padrão de acesso.
+
+</details>
 
 ### 12.d. Duas perguntas para discutir em sala
 
 Não precisam de código.
 
-1. A loja quer uma tela com **os dez pedidos de maior valor** de uma cliente numa competência. Nenhuma das nove tabelas responde a isso com eficiência. Por quê, e o que precisaria existir?
+1. A infobarShop quer uma tela com **os dez pedidos de maior valor** de uma cliente numa competência. Nenhuma das nove tabelas responde a isso com eficiência. Por quê, e o que precisaria existir?
 2. `pedidos_por_produto` particiona por `(id_cliente, produto)` — é a única tabela de pedidos sem bucket. O que aconteceria com ela se a partition key fosse `(id_cliente, produto, competencia)`? Ganha-se o quê, e perde-se qual consulta?
 
 ## Referências
@@ -3715,7 +3776,7 @@ DIR=$(ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1)
 
 ```
 
-### `keyspace ecommerce does not exist` (ou `infobarbank`)
+### `keyspace infobarshop does not exist` (ou `infobarbank`)
 
 A carga do primeiro boot ainda não terminou, ou falhou. Veja o que ela diz:
 
@@ -3731,7 +3792,9 @@ carregar-keyspaces
 
 ```
 
-Ela recria `infobarbank` e `ecommerce` do zero e não toca na sua keyspace `lab`.
+Ela recria `infobarbank` e `infobarshop` do zero e não toca na sua keyspace `lab`.
+
+Se o `DESCRIBE KEYSPACES` mostrar uma keyspace `ecommerce` no lugar de `infobarshop`, o seu ambiente foi criado com uma versão anterior da imagem. Crie um ambiente novo rodando o `launch-lab.sh` de novo (seção 1); na execução local, rode `docker compose down` e `docker compose pull` antes de subir de novo.
 
 ### Os resultados não batem com o texto
 
