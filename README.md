@@ -3497,6 +3497,58 @@ Q9' e Q10' não falam de uma cliente: falam de **todas as vendas** de um estado,
 3. **O porquê.** Qual coluna está na partition key de cada uma das nove tabelas, e por que nenhuma delas é algo que essas consultas têm em mãos.
 4. **Uma proposta.** O que precisaria existir para responder bem: a `PRIMARY KEY` de uma tabela nova (sem criá-la), o risco que ela traz — pense em quantas vendas um único estado concentra num dia de Black Friday — e se essa pergunta deveria mesmo ser respondida pelo Cassandra (seções 1 e 10).
 
+<details>
+<summary><b>Solução de referência das consultas analíticas</b> (tente antes de abrir)</summary>
+
+Esta é **uma** resposta possível; outras propostas são defensáveis, desde que justificadas. Troque `2026-05-15` por um dia de uma competência fechada do seu ambiente.
+
+**1. A tentativa.** A única tabela que tem todos os pedidos com `uf` e `produto` é a `pedido_detalhe`:
+
+```sh
+cqlsh -e "SELECT * FROM infobarshop.pedido_detalhe WHERE uf='SP' AND data_criacao >= '2026-05-15' AND data_criacao < '2026-05-16';"
+
+```
+
+```
+InvalidRequest: ... "Cannot execute this query as it might involve data filtering..."
+```
+
+A Q10' é igual, com `produto='NOTEBOOK'` no lugar de `uf='SP'`. Tentar as tabelas de pedidos por cliente dá o mesmo erro: sem `id_cliente`, nenhuma delas sabe qual partição ler.
+
+**2. O custo.**
+
+```sh
+cqlsh -e "TRACING ON; SELECT count(*) FROM infobarshop.pedido_detalhe WHERE uf='SP' AND data_criacao >= '2026-05-15' AND data_criacao < '2026-05-16' ALLOW FILTERING;"
+
+```
+
+No rastro, `Submitting range requests on 17 ranges` e `Read 12004 live rows`: o Cassandra varreu **a tabela inteira** para devolver um punhado de pedidos — às vezes nenhum. É a varredura da seção 9.i, agora sobre todos os pedidos da loja.
+
+**3. O porquê.** As partition keys das nove tabelas são `id_cliente`, `cpf`, `email`, `(id_cliente, competencia)`, `(id_cliente, produto)` e `id_pedido`. Todas identificam **uma cliente** ou **um pedido**, porque o esquema serve ao painel da cliente: é isso que aquela aplicação tem em mãos. A Q9' tem em mãos um estado e um dia; a Q10', um produto e um dia. Nenhuma tabela começa por isso, e a regra da seção 9 não tem exceção: sem a partition key, não há leitura pontual.
+
+**4. A proposta.** Se a consulta for de uma tela que roda a toda hora, ela pede a sua própria tabela, gravada junto com as outras a cada pedido:
+
+```sql
+CREATE TABLE infobarshop.pedidos_por_uf_dia (
+    uf text, dia date, data_criacao timestamp, id_pedido text,
+    id_cliente text, produto text, valor_total float, ...,
+    PRIMARY KEY ((uf, dia), data_criacao, id_pedido)
+) WITH CLUSTERING ORDER BY (data_criacao DESC, id_pedido ASC);
+```
+
+A Q10' é a mesma ideia, com `((produto, dia), data_criacao, id_pedido)`. O `dia` na partition key é o bucket da seção 9.f: sem ele, a partição de SP cresceria para sempre.
+
+O risco é a **partição quente**. As partições não têm o mesmo tamanho: SP concentra boa parte das vendas, e numa Black Friday a partição `('SP', dia)` recebe uma fração enorme das escritas da loja inteira, todas no mesmo conjunto de réplicas. A saída é um bucket mais fino, `((uf, dia, hora), ...)`, ou sintético, `((uf, dia, bucket), ...)` com `bucket = hash(id_pedido) % N`. Em troca, a leitura do dia passa a juntar 24 (ou N) partições.
+
+Há duas alternativas, e a pergunta decisiva é **quem faz essa consulta, e com que frequência**:
+
+- **SAI (seção 10).** Índices em `uf`, `produto` e `data_criacao` na `pedido_detalhe` respondem as duas sem `ALLOW FILTERING` e sem tabela nova. Mas, sem partition key, a consulta ainda pergunta a todos os nós do cluster. Serve para uma consulta ocasional, não para uma tela de alto volume.
+- **Fora do Cassandra (seção 1).** "Vendas de SP no dia" e "vendas de NOTEBOOK no dia" são perguntas de **relatório**, de quem gerencia a loja, não da cliente no painel. O caminho natural é levar os pedidos por CDC para uma camada analítica (um banco colunar, Spark), que agrega bilhões de linhas por qualquer coluna. O Cassandra continua fazendo o que faz bem: servir o painel, uma partição por vez.
+
+A melhor resposta não escolhe uma das três por gosto: justifica a escolha pelo padrão de acesso.
+
+</details>
+
 ### 12.d. Duas perguntas para discutir em sala
 
 Não precisam de código.
