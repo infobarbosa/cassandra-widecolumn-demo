@@ -3455,7 +3455,7 @@ Use uma competência **fechada** com bom volume. Nos exemplos deste desafio apar
 
 ### 12.b. As consultas
 
-Escreva, para cada item, a consulta CQL que o responde. Todas as respostas existem: **não é necessário criar nenhuma tabela**.
+Escreva, para cada item, a consulta CQL que o responde. De Q1' a Q8', cada consulta tem uma tabela pronta que a responde: **não é necessário criar nenhuma tabela**. Q9' e Q10' são de outra natureza, e descobrir qual é faz parte do desafio (veja 12.c).
 
 | | Consulta |
 |---|---|
@@ -3472,7 +3472,7 @@ Escreva, para cada item, a consulta CQL que o responde. Todas as respostas exist
 
 ### 12.c. O que você deve conseguir responder
 
-Para cada consulta, três coisas:
+Para cada consulta de Q1' a Q8', três coisas:
 
 1. **O comando CQL**, executado e funcionando.
 2. **O resultado** que ele devolveu.
@@ -3480,13 +3480,22 @@ Para cada consulta, três coisas:
 
 A terceira é a que mostra se você entendeu. Duas tabelas diferentes podem devolver o mesmo resultado nesta base pequena; só uma delas responde àquela pergunta com uma leitura pontual em uma partição. A justificativa deve mencionar a partition key e, quando for o caso, a clustering key.
 
-Use estas perguntas para conferir cada resposta:
+Use estas perguntas para conferir cada resposta de Q1' a Q8':
 
 - A consulta informa a **partition key completa**? Nenhuma resposta deve precisar de `ALLOW FILTERING`.
 - A tabela escolhida já entrega o resultado **na ordem pedida**? Nenhuma resposta deve precisar de `ORDER BY`.
 - A justificativa percorre, ao contrário, o caminho da seção 9: *desta consulta, o que eu tenho em mãos? logo, qual partition key? logo, qual tabela?*
 
-> Se alguma resposta sua precisar de `ALLOW FILTERING` ou de `ORDER BY`, ela está usando a tabela errada. Releia a seção 9.
+> Se alguma resposta sua de Q1' a Q8' precisar de `ALLOW FILTERING` ou de `ORDER BY`, ela está usando a tabela errada. Releia a seção 9.
+
+#### As duas consultas analíticas
+
+Q9' e Q10' não falam de uma cliente: falam de **todas as vendas** de um estado, ou de um produto, num dia. Para elas, a pergunta da seção 9 — *o que eu tenho em mãos?* — tem outra resposta, e é isso que você precisa mostrar. Para cada uma, quatro coisas:
+
+1. **A tentativa.** A consulta que você escreveria, numa das nove tabelas, e o erro que o Cassandra devolve.
+2. **O custo.** A mesma consulta com `ALLOW FILTERING` e `TRACING ON`, como na seção 9.i. Anote quantas linhas foram lidas para devolver quantas.
+3. **O porquê.** Qual coluna está na partition key de cada uma das nove tabelas, e por que nenhuma delas é algo que essas consultas têm em mãos.
+4. **Uma proposta.** O que precisaria existir para responder bem: a `PRIMARY KEY` de uma tabela nova (sem criá-la), o risco que ela traz — pense em quantas vendas um único estado concentra num dia de Black Friday — e se essa pergunta deveria mesmo ser respondida pelo Cassandra (seções 1 e 10).
 
 ### 12.d. Duas perguntas para discutir em sala
 
