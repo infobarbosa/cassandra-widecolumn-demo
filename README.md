@@ -984,7 +984,9 @@ A ordem não é arrumação da consulta: é como o dado está gravado. Desenhada
 
 ![Quem é quem numa chave, na lab.cartao_credito com PRIMARY KEY (id_cliente, id_cartao): a partição 2b162060, da Marivalda, com três linhas ordenadas por id_cartao, e a partição 2b16242a, da Jucilene, com uma; uma linha destacada é a primary key (corte horizontal), a partição inteira é a partition key (corte vertical) e uma seta mostra a ordem das linhas dentro da partição (clustering key)](diagramas/08-particao-cartoes.svg)
 
-Esta é uma **wide partition** — uma partição de múltiplas linhas —, e é dela que vem o nome do modelo *wide-column*: uma partição que guarda muitas linhas, ordenadas pela clustering key, lidas de uma vez numa única ida ao disco. A lista de cartões da Marivalda é **uma** leitura, numa partição, num nó — por mais cartões que ela tenha.
+Esta é uma **wide partition** — uma partição de múltiplas linhas, guardadas juntas e ordenadas pela clustering key. A lista de cartões da Marivalda é **uma** consulta, a **uma** partição, que devolve as linhas já na ordem — por mais cartões que ela tenha.
+
+> O termo *wide-column* vem de antes do CQL. Nos modelos herdados do Bigtable, cada linha podia ter milhares de colunas, diferentes de uma linha para outra (seção 1.a). No Cassandra de hoje, essa "linha larga" é a partição: cada linha CQL de uma wide partition era, por dentro, um grupo de colunas da mesma linha.
 
 Na `lab.cliente`, com chave de uma coluna, cada partição tinha uma linha só. Agora você conhece a outra ponta, e os dois extremos têm riscos: a partição de uma linha não aproveita nada do modelo; a partição que cresce sem limite é um problema que a Parte 2 vai medir. Você vai encontrar o termo *wide partition* também nesse sentido negativo, em alertas e artigos sobre partições grandes demais: é a mesma estrutura, quando cresce sem controle (seção 8.f).
 
@@ -3230,7 +3232,7 @@ O resultado tem **duas partições**, não quatro — e a da Jucilene vem primei
 
 > O `| tail -1` é o mesmo truque de 10.d: cada `DROP TABLE` da seção 5 deixou para trás o diretório de uma tentativa anterior, e queremos o mais recente.
 
-Uma `key`, três `rows`, cada uma com o seu `clustering`: o desenho da seção 5, agora em bytes. A wide partition não é uma visão da consulta. É assim que as linhas da Marivalda moram no arquivo — juntas e em ordem, prontas para serem lidas de uma vez.
+Uma `key`, três `rows`, cada uma com o seu `clustering`: o desenho da seção 5, agora em bytes. A wide partition não é uma visão da consulta. É assim que as linhas da Marivalda moram no arquivo — juntas e em ordem, prontas para serem lidas em sequência, sem procurar.
 
 ### 10.m. O que você deve conseguir explicar
 
