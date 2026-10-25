@@ -522,11 +522,7 @@ A lista completa está na [documentação](https://cassandra.apache.org/doc/late
 
 ### 3.b. A tabela de clientes
 
-A primeira peça do aplicativo é o cadastro de clientes: é dele que vem o nome que a tela inicial mostra.
-
-![A tela inicial do app com a saudação "Olá, Marivalda" em destaque: o nome da cliente vem do cadastro, a tabela de clientes desta seção](diagramas/03b-tela-cliente.svg)
-
-Estas cinco pessoas você vai reencontrar na Parte 2, no sistema completo do banco — inclusive com o mesmo `id_cliente`:
+A primeira tabela da sua bancada é um cadastro de clientes. Estas cinco pessoas você vai reencontrar na Parte 2, no sistema completo do banco — inclusive com o mesmo `id_cliente`:
 
 ```sh
 # 3.b.1
@@ -997,7 +993,7 @@ Na Parte 3 você vai abrir o arquivo desta tabela e ver as três linhas da Mariv
 - Por que o resultado veio ordenado por `id_cartao` sem `ORDER BY`.
 - O que é uma *wide partition*, e por que a lista de cartões da cliente é uma leitura só.
 
-**→ Parte 2.** Você construiu duas peças do aplicativo à mão, uma tabela por vez. O sistema do banco tem doze. Como se decide quais tabelas criar, e qual chave cada uma recebe?
+**→ Parte 2.** Você construiu duas tabelas à mão, uma de cada vez. O sistema do banco tem doze. Como se decide quais tabelas criar, e qual chave cada uma recebe?
 
 ---
 

@@ -16,7 +16,6 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 | `01b-telas-infobarbank` | 1 |
 | `02-coordinator-replicas` | 2 |
 | `03-multi-datacenter` | 2 |
-| `03b-tela-cliente` | 3 |
 | `04-ring-token` | 4 |
 | `04b-quem-e-quem` | 4 |
 | `05a-tela-cartoes` | 5 |
