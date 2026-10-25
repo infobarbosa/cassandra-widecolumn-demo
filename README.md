@@ -1122,11 +1122,11 @@ Quatro tabelas de cliente, cinco de lançamento com os mesmos dados. A próxima 
 
 Toda chave do modelo lógico passa por três perguntas. A primeira você já conhece da seção 5:
 
-| Critério | Pergunta | Onde você vê |
-|---|---|---|
-| **Unicidade** | A chave identifica uma linha só? | seção 5 (cartões) e seção 8.d (CPF) |
-| **Ordenação** | As linhas vêm na ordem que a consulta pede? | seção 8.g |
-| **Distribuição** | A partição tem tamanho limitado? | seção 8.f |
+| Critério | Pergunta |
+|---|---|
+| **Unicidade** | A chave identifica uma linha só? |
+| **Ordenação** | As linhas vêm na ordem que a consulta pede? |
+| **Distribuição** | A partição tem tamanho limitado? |
 
 ### 6.f. O que você deve conseguir explicar
 
