@@ -1043,7 +1043,7 @@ Cada tela, ou cada parte de tela, é uma consulta:
 | **Q2** | Exibir lista de cartões de crédito e seus limites | cartões |
 | **Q3** | Últimos lançamentos aprovados de conta e cartão | extrato, visão inicial |
 | **Q4** | Exibir extrato de lançamentos por período | extrato, filtro de datas |
-| **Q5** | Exibir extrato dos lançamentos de um cartão | extrato de um cartão |
+| **Q5** | Exibir extrato dos lançamentos de um produto — a conta ou um dos cartões | extrato, filtro por produto |
 | **Q6** | Exibir extrato de lançamentos do tipo débito | extrato, filtro de tipo |
 | **Q7** | Exibir detalhe do lançamento selecionado | detalhe |
 
@@ -1762,7 +1762,7 @@ Duas leituras, duas partições, dois nós possíveis num cluster — e é assim
 
 ### 7.d. A mesma partição, quatro ordenações
 
-Q3, Q5 e Q6 pedem os mesmos lançamentos da mesma cliente no mesmo mês. Só a forma de filtrar muda. A tentação é atender todas com uma tabela só — e o banco tentou. É a `lancamentos_cartao_credito`:
+Q3, Q5 e Q6 pedem os mesmos lançamentos da mesma cliente no mesmo mês. Só a forma de filtrar muda. A tentação é atender todas com uma tabela só — e o banco tentou. É a `lancamentos_cartao_credito` (o nome é herança: apesar dele, ela guarda os lançamentos da conta e dos cartões):
 
 ```sh
 # 7.d.1
@@ -1791,13 +1791,13 @@ WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND status='APROVADA'
 InvalidRequest: ... "PRIMARY KEY column "status" cannot be restricted as preceding column "data_hora" is not restricted"
 ```
 
-Ter a coluna na chave não basta: as clustering keys são uma **ordem**, e só a primeira serve de filtro livre. Uma tabela ordenada por data responde a perguntas sobre data. Para filtrar por situação, por cartão e por tipo, o banco precisou de **uma tabela para cada ordem**. Compare as chaves:
+Ter a coluna na chave não basta: as clustering keys são uma **ordem**, e só a primeira serve de filtro livre. Uma tabela ordenada por data responde a perguntas sobre data. Para filtrar por situação, por produto e por tipo, o banco precisou de **uma tabela para cada ordem**. Compare as chaves:
 
 | Consulta | Tabela | PRIMARY KEY |
 |---|---|---|
 | Q4 por período | `lancamentos_por_periodo` | `((id_cliente, competencia), data_hora, id_lancamento)` |
 | Q3 por situação | `lancamentos_por_status` | `((id_cliente, competencia), status, data_hora, id_lancamento)` |
-| Q5 por cartão | `lancamentos_por_produto` | `((id_cliente, competencia), id_produto, data_hora, id_lancamento)` |
+| Q5 por produto | `lancamentos_por_produto` | `((id_cliente, competencia), id_produto, data_hora, id_lancamento)` |
 | Q6 por tipo | `lancamentos_por_tipo` | `((id_cliente, competencia), tipo_operacao, data_hora, id_lancamento)` |
 
 **Partition key idêntica nas quatro. O que muda é a primeira clustering key.** É o mesmo dado, gravado quatro vezes, ordenado de quatro maneiras.
@@ -1826,7 +1826,7 @@ LIMIT 5;"
 (5 rows)
 ```
 
-Q5 — lançamentos de um cartão específico:
+Q5 — os lançamentos de um produto. Primeiro, um dos cartões:
 
 ```sh
 # 7.d.4
@@ -1852,12 +1852,35 @@ WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND id_produto='89719
 (8 rows)
 ```
 
-`id_produto` é a conta ou o cartão que originou o lançamento — `897199aa` é um dos cartões que a Q2 listou.
+`897199aa` é um dos cartões que a Q2 listou. Agora a conta corrente, cujo id a Q1 devolveu:
+
+```sh
+# 7.d.5
+cqlsh -e "
+SELECT id_produto, data_hora, estabelecimento, valor
+FROM infobarbank.lancamentos_por_produto
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND id_produto='2b162060';"
+
+```
+
+```
+ id_produto | data_hora                       | estabelecimento     | valor
+------------+---------------------------------+---------------------+-----------
+   2b162060 | 2026-10-18 22:08:07.439000+0000 |     Salão de beleza | 232.14999
+   2b162060 | 2026-10-16 22:08:08.241000+0000 |            Farmácia |    609.19
+   2b162060 | 2026-10-15 22:08:10.264000+0000 |  Loja de brinquedos |    116.27
+   2b162060 | 2026-10-14 22:08:07.667000+0000 |      Loja de roupas |    562.63
+   2b162060 | 2026-10-04 22:08:10.420000+0000 | Loja de eletrônicos | 154.85001
+
+(5 rows)
+```
+
+A mesma tabela, a mesma consulta, outro produto. No modelo conceitual da 6.a, conta e cartão são entidades diferentes, e cada uma tem a sua tabela de cadastro (Q1 e Q2). Para a tela de extrato, porém, são a mesma coisa: um produto que gera lançamentos. Por isso os lançamentos dos dois moram juntos, e a coluna se chama `id_produto`, não `id_cartao`.
 
 Q6 — por tipo de operação:
 
 ```sh
-# 7.d.5
+# 7.d.6
 cqlsh -e "
 SELECT tipo_operacao, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_tipo
@@ -1913,7 +1936,7 @@ Não existe uma única tabela do `infobarbank` cujo conteúdo não apareça em o
 Nas quatro tabelas, a última clustering key antes do id é `data_hora`, em ordem decrescente. É isso que faz o `LIMIT 5` da Q3 devolver os cinco **mais recentes** sem `ORDER BY`. Veja o que acontece quando a chave é única mas não ordena pelo que a tela mostra. Na sua bancada, um extrato cuja clustering key é só o id do lançamento, gerado com `uuid()`:
 
 ```sh
-# 7.d.6
+# 7.d.7
 cqlsh -e "
 CREATE TABLE lab.extrato_por_uuid (
     id_cliente      text,
@@ -1934,7 +1957,7 @@ INSERT INTO lab.extrato_por_uuid (id_cliente, competencia, id_lancamento, data_h
 A tela pede os três mais recentes:
 
 ```sh
-# 7.d.7
+# 7.d.8
 cqlsh -e "SELECT data_hora, estabelecimento FROM lab.extrato_por_uuid WHERE id_cliente='2b162060' AND competencia='2026-06' LIMIT 3;"
 
 ```
@@ -1952,7 +1975,7 @@ Três linhas, numa ordem que não é a do tempo — a sua será outra, porque os
 > **Provoque este erro.**
 
 ```sh
-# 7.d.8
+# 7.d.9
 cqlsh -e "SELECT data_hora, estabelecimento FROM lab.extrato_por_uuid WHERE id_cliente='2b162060' AND competencia='2026-06' ORDER BY data_hora DESC LIMIT 3;"
 
 ```
@@ -1964,7 +1987,7 @@ InvalidRequest: ... "Order by is currently only supported on the clustered colum
 > **Ordenação.** A clustering key decide a ordem física das linhas, e a consulta só consegue devolver nessa ordem (ou na inversa). Se a tela mostra "mais recente primeiro", a data precisa estar na clustering key, antes do id.
 
 ```sh
-# 7.d.9
+# 7.d.10
 cqlsh -e "DROP TABLE lab.extrato_por_uuid;"
 
 ```
