@@ -1320,23 +1320,20 @@ A partition key agora tem **duas** colunas: `id_cliente` **e** `competencia`. O 
 
 #### A competência dos exemplos
 
-Toda consulta a essas tabelas agora informa um mês. Os lançamentos do seu ambiente foram gerados em relação à data em que ele subiu, então os meses disponíveis são outros. Guarde numa variável o mês que os exemplos vão usar, e o anterior a ele:
+Toda consulta a essas tabelas agora informa um mês. Os lançamentos do laboratório são gerados no primeiro boot, cobrindo os doze meses anteriores, então o mês atual sempre tem dados. Guarde-o numa variável:
 
 ```sh
 # 7.b.2
-MESES=$(cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_periodo;" \
-        | awk '$1=="2b162060" {print $3}' | sort)
-COMPETENCIA=$(echo "$MESES" | tail -2 | head -1)
-COMPETENCIA_ANTERIOR=$(echo "$MESES" | tail -3 | head -1)
-echo "COMPETENCIA=$COMPETENCIA  COMPETENCIA_ANTERIOR=$COMPETENCIA_ANTERIOR"
+COMPETENCIA=$(date +%Y-%m)
+echo $COMPETENCIA
 
 ```
 
 ```
-COMPETENCIA=2026-06  COMPETENCIA_ANTERIOR=2026-05
+2026-10
 ```
 
-Os comandos daqui em diante usam `$COMPETENCIA`, e as saídas mostradas são de um ambiente em que ela valia `2026-06`.
+Os comandos daqui em diante usam `$COMPETENCIA`, e as saídas mostradas aqui são de outubro de 2026.
 
 > A variável vale só neste terminal. Se abrir outro, rode o 7.b.2 de novo.
 
@@ -1348,7 +1345,7 @@ cqlsh -e "
 SELECT data_hora, id_produto, tipo_operacao, estabelecimento, valor
 FROM infobarbank.lancamentos_por_periodo
 WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA'
-  AND data_hora >= '$COMPETENCIA-19' AND data_hora < '$COMPETENCIA-28';"
+  AND data_hora >= '$COMPETENCIA-01' AND data_hora < '$COMPETENCIA-15';"
 
 ```
 
@@ -1544,7 +1541,7 @@ O bucket não é grátis, e o custo é na consulta. Com a competência na partit
 
 ```sh
 # 7.b.16
-cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia >= '$COMPETENCIA_ANTERIOR';"
+cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia <= '$COMPETENCIA';"
 
 ```
 
@@ -1552,10 +1549,11 @@ cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo
 InvalidRequest: ... "Cannot execute this query as it might involve data filtering..."
 ```
 
-Faz sentido, pelo que você viu na seção 4: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre abril e junho". A saída é listar os buckets desejados:
+Faz sentido, pelo que você viu na seção 4: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre agosto e outubro". A saída é listar os buckets desejados — aqui, o mês anterior e o atual:
 
 ```sh
 # 7.b.17
+COMPETENCIA_ANTERIOR=$(date -d "$COMPETENCIA-01 -1 month" +%Y-%m)
 cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
