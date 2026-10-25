@@ -829,7 +829,7 @@ Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, ca
 
 Agora no caso do infobarBank: os lançamentos de cada cliente, numa tabela com `PRIMARY KEY (id_cliente, data_hora, id_lancamento)`. A chave tem três colunas, e cada uma tem um papel diferente:
 
-![Os lançamentos do infobarBank numa tabela com PRIMARY KEY (id_cliente, data_hora, id_lancamento): três partições, uma por cliente, cada uma com os lançamentos do mais recente para o mais antigo; uma linha destacada é a primary key (corte horizontal), uma partição inteira é a partition key (corte vertical) e uma seta mostra a ordem das linhas dentro da partição (clustering key)(diagramas/04b-quem-e-quem.svg)
+![Os lançamentos do infobarBank numa tabela com PRIMARY KEY (id_cliente, data_hora, id_lancamento): três partições, uma por cliente, cada uma com os lançamentos do mais recente para o mais antigo; uma linha destacada é a primary key (corte horizontal), uma partição inteira é a partition key (corte vertical) e uma seta mostra a ordem das linhas dentro da partição (clustering key)](diagramas/04b-quem-e-quem.svg)
 
 | | Corte | Papel |
 |---|---|---|
