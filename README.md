@@ -811,6 +811,8 @@ O outro extremo — uma partição que cresce sem limite — é um problema de v
 
 O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 5 — e, na Parte 2, o centro de toda a modelagem. Antes disso, vale organizar quem é quem numa chave, com a ajuda de um exemplo de fora do Cassandra.
 
+<p align="center"><img src="diagramas/04a-armazene-junto.svg" width="720" alt="Em qualquer sistema de armazenamento, partição é a resposta à regra: armazene junto o que você quer recuperar junto"></p>
+
 > **Exemplo hipotético: partições num data lake.** Imagine as transações do infobarBank guardadas num **data lake**, como pastas, uma por dia. Essa tabela não existe no laboratório: é só uma forma de enxergar o que é uma partição.
 
 ![Exemplo hipotético, partições num data lake: a tabela imaginária transacoes_por_dia, com PRIMARY KEY (dia, hora, id_transacao), desenhada como três pastas de data lake, uma por dia: uma linha destacada é a primary key (corte horizontal), uma pasta inteira é a partição (corte vertical) e uma seta mostra a ordem das linhas dentro da pasta (clustering key)](diagramas/04b-quem-e-quem.svg)
