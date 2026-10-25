@@ -1044,7 +1044,7 @@ Cada tela, ou cada parte de tela, é uma consulta:
 | **Q3** | Últimos lançamentos aprovados de conta e cartão | extrato, visão inicial |
 | **Q4** | Exibir extrato de lançamentos por período | extrato, filtro de datas |
 | **Q5** | Exibir extrato dos lançamentos de um produto — a conta ou um dos cartões | extrato, filtro por produto |
-| **Q6** | Exibir extrato de lançamentos do tipo débito | extrato, filtro de tipo |
+| **Q6** | Exibir extrato de lançamentos de um tipo de operação (débito ou crédito) | extrato, filtro de operação |
 | **Q7** | Exibir detalhe do lançamento selecionado | detalhe |
 
 Duas regras de negócio completam as consultas:
@@ -1775,7 +1775,7 @@ cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_cartao_credito;"
 ) WITH CLUSTERING ORDER BY (data_hora DESC, id_produto ASC, status ASC, tipo_operacao ASC, id_lancamento ASC)
 ```
 
-Todas as colunas de filtro estão na chave, e mesmo assim ela não serve, por dois motivos. O primeiro é a **cobertura**: ela só tem lançamentos de cartão. O extrato (Q4) e os filtros por situação (Q3) e por tipo (Q6) precisam também dos lançamentos da conta corrente; a Q5 seria atendida só quando o produto escolhido fosse um cartão — e por isso continua na `lancamentos_por_produto`. O segundo motivo aparece mesmo entre os cartões. Tente a Q3, que filtra por situação:
+Todas as colunas de filtro estão na chave, e mesmo assim ela não serve, por dois motivos. O primeiro é a **cobertura**: ela só tem lançamentos de cartão. O extrato (Q4) e os filtros por situação (Q3) e por tipo de operação (Q6) precisam também dos lançamentos da conta corrente; a Q5 seria atendida só quando o produto escolhido fosse um cartão — e por isso continua na `lancamentos_por_produto`. O segundo motivo aparece mesmo entre os cartões. Tente a Q3, que filtra por situação:
 
 > **Provoque este erro.**
 
@@ -1791,14 +1791,14 @@ WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND status='APROVADA'
 InvalidRequest: ... "PRIMARY KEY column "status" cannot be restricted as preceding column "data_hora" is not restricted"
 ```
 
-Ter a coluna na chave não basta: as clustering keys são uma **ordem**, e só a primeira serve de filtro livre. Uma tabela ordenada por data responde a perguntas sobre data. Para filtrar por situação, por produto e por tipo, o banco precisou de **uma tabela para cada ordem**. Compare as chaves:
+Ter a coluna na chave não basta: as clustering keys são uma **ordem**, e só a primeira serve de filtro livre. Uma tabela ordenada por data responde a perguntas sobre data. Para filtrar por situação, por produto e por tipo de operação, o banco precisou de **uma tabela para cada ordem**. Compare as chaves:
 
 | Consulta | Tabela | PRIMARY KEY |
 |---|---|---|
 | Q4 por período | `lancamentos_por_periodo` | `((id_cliente, competencia), data_hora, id_lancamento)` |
 | Q3 por situação | `lancamentos_por_status` | `((id_cliente, competencia), status, data_hora, id_lancamento)` |
 | Q5 por produto | `lancamentos_por_produto` | `((id_cliente, competencia), id_produto, data_hora, id_lancamento)` |
-| Q6 por tipo | `lancamentos_por_tipo` | `((id_cliente, competencia), tipo_operacao, data_hora, id_lancamento)` |
+| Q6 por tipo de operação | `lancamentos_por_tipo` | `((id_cliente, competencia), tipo_operacao, data_hora, id_lancamento)` |
 
 **Partition key idêntica nas quatro. O que muda é a primeira clustering key.** É o mesmo dado, gravado quatro vezes, ordenado de quatro maneiras.
 
