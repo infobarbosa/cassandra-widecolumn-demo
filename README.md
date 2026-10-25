@@ -825,20 +825,6 @@ Agora localize a Marivalda. O token dela é `-754340186604780055`, e no trecho a
 
 Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, cada um ficaria com aproximadamente metade das faixas, e cada partição passaria a ter um endereço não só no disco, mas na rede. Esse é o assunto do laboratório de cluster.
 
-### 4.d. Quem é quem numa chave
-
-Agora no caso do infobarBank: os lançamentos de cada cliente, numa tabela com `PRIMARY KEY (id_cliente, data_hora, id_lancamento)`. A chave tem três colunas, e cada uma tem um papel diferente:
-
-![Os lançamentos do infobarBank numa tabela com PRIMARY KEY (id_cliente, data_hora, id_lancamento): três partições, uma por cliente, cada uma com os lançamentos do mais recente para o mais antigo; uma linha destacada é a primary key (corte horizontal), uma partição inteira é a partition key (corte vertical) e uma seta mostra a ordem das linhas dentro da partição (clustering key)](diagramas/04b-quem-e-quem.svg)
-
-| | Corte | Papel |
-|---|---|---|
-| **primary key** | horizontal | identifica uma linha, e só uma: é a chave inteira, `id_cliente + data_hora + id_lancamento` |
-| **partition key** | vertical | agrupa as linhas que moram juntas — e, num cluster, decide em qual nó. A regra: **armazene junto o que você quer recuperar junto** |
-| **clustering key** | — | decide **em que ordem** as linhas ficam dentro da partição |
-
-Na `lab.cliente`, os três papéis se confundem: a chave tem uma coluna só, que é ao mesmo tempo primary key e partition key, e não existe clustering key. Por isso cada partição tem exatamente uma linha: o caso mais simples que existe, e também o menos interessante, porque uma partição de uma linha só não aproveita nada do que o Cassandra sabe fazer. Na seção 5 os três papéis se separam.
-
 ---
 
 ## 5. Wide partitions: partições de múltiplas linhas
@@ -847,7 +833,9 @@ A tela inicial do app, que você viu na seção 1, lista os cartões da cliente 
 
 ![A tela inicial do app com os três cartões da Marivalda em destaque, de limites 1.000, 200 e 500: três cartões, uma cliente; como guardar os três e buscar todos de uma vez?](diagramas/05a-tela-cartoes.svg)
 
-A consulta por trás dessa parte da tela é sempre a mesma: *dada a cliente que entrou no app, quais são os cartões dela?* Vamos guardar os cartões na sua bancada — e errar primeiro, do jeito que quase todo mundo erra.
+A consulta por trás dessa parte da tela é sempre a mesma: *dada a cliente que entrou no app, quais são os cartões dela?*
+
+Até aqui, na `lab.cliente`, a chave tinha uma coluna só, que era ao mesmo tempo primary key e partition key, e cada partição tinha uma linha. Os cartões pedem mais do que isso. Vamos guardá-los na sua bancada — e errar primeiro, do jeito que quase todo mundo erra.
 
 ### 5.a. A primeira tentativa
 
@@ -984,16 +972,17 @@ cqlsh -e "SELECT * FROM lab.cartao_credito WHERE id_cliente = '2b162060';"
 (3 rows)
 ```
 
-Os três cartões, **e em ordem de `id_cartao`**, sem que você tenha pedido. As duas colunas da chave têm papéis diferentes:
+Os três cartões, **e em ordem de `id_cartao`**, sem que você tenha pedido. Com duas colunas na chave, os papéis que na `lab.cliente` se confundiam agora se separam:
 
 | | Coluna | Papel |
 |---|---|---|
-| **partition key** | `id_cliente`, a primeira | decide **em qual partição** — e em qual nó — a linha mora; é o que passa pela função hash da seção 4 |
+| **primary key** | `id_cliente` + `id_cartao`, a chave inteira | identifica uma linha, e só uma — por isso os três cartões agora convivem |
+| **partition key** | `id_cliente`, a primeira | decide **em qual partição** — e em qual nó — a linha mora; é o que passa pela função hash da seção 4. A regra: **armazene junto o que você quer recuperar junto** |
 | **clustering key** | `id_cartao`, as seguintes | decide **em que ordem** as linhas ficam **dentro** da partição |
 
 A ordem não é arrumação da consulta: é como o dado está gravado. Desenhada, a tabela fica assim:
 
-![A partição 2b162060, da Marivalda, com três linhas ordenadas por id_cartao; a partição 2b16242a, da Jucilene, com uma linha](diagramas/08-particao-cartoes.svg)
+![Quem é quem numa chave, na lab.cartao_credito com PRIMARY KEY (id_cliente, id_cartao): a partição 2b162060, da Marivalda, com três linhas ordenadas por id_cartao, e a partição 2b16242a, da Jucilene, com uma; uma linha destacada é a primary key (corte horizontal), a partição inteira é a partition key (corte vertical) e uma seta mostra a ordem das linhas dentro da partição (clustering key)](diagramas/08-particao-cartoes.svg)
 
 Esta é uma **wide partition** — uma partição de múltiplas linhas —, e é dela que vem o nome do modelo *wide-column*: uma partição que guarda muitas linhas, ordenadas pela clustering key, lidas de uma vez numa única ida ao disco. A lista de cartões da Marivalda é **uma** leitura, numa partição, num nó — por mais cartões que ela tenha.
 
