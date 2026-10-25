@@ -1150,7 +1150,7 @@ Doze tabelas para sete consultas. Cada uma existe por causa de um access pattern
 | `lancamentos_por_produto` | Q5 |
 | `lancamentos_por_tipo` | Q6 |
 | `lancamentos_detalhe` | Q7 |
-| `lancamentos_cartao_credito` | a primeira tentativa de extrato, com uma tabela só para todos os filtros — e o motivo pelo qual não basta (seção 7.d) |
+| `lancamentos_cartao_credito` | os lançamentos só dos cartões, com todos os filtros na chave — e por que ela não atende o extrato (seção 7.d) |
 
 Quatro tabelas de cliente, cinco de lançamento com os mesmos dados. A próxima seção explica por que um modelo Cassandra repete tanto.
 
@@ -1762,7 +1762,7 @@ Duas leituras, duas partições, dois nós possíveis num cluster — e é assim
 
 ### 7.d. A mesma partição, quatro ordenações
 
-Q3, Q5 e Q6 pedem os mesmos lançamentos da mesma cliente no mesmo mês. Só a forma de filtrar muda. A tentação é atender todas com uma tabela só — e o banco tentou. É a `lancamentos_cartao_credito` (o nome é herança: apesar dele, ela guarda os lançamentos da conta e dos cartões):
+Q3, Q5 e Q6 pedem os mesmos lançamentos da mesma cliente no mesmo mês. Só a forma de filtrar muda. A tentação é atender todas com uma tabela só, com todas as colunas de filtro na chave. O banco tem uma tabela assim, a `lancamentos_cartao_credito` — que guarda só os lançamentos dos cartões:
 
 ```sh
 # 7.d.1
@@ -1775,7 +1775,7 @@ cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_cartao_credito;"
 ) WITH CLUSTERING ORDER BY (data_hora DESC, id_produto ASC, status ASC, tipo_operacao ASC, id_lancamento ASC)
 ```
 
-Todas as colunas de filtro estão na chave. Serve à Q4, porque `data_hora` é a primeira clustering key. Agora a Q3, que filtra por situação:
+Todas as colunas de filtro estão na chave, e mesmo assim ela não serve, por dois motivos. O primeiro é a **cobertura**: ela só tem lançamentos de cartão. O extrato (Q4) e os filtros por situação (Q3) e por tipo (Q6) precisam também dos lançamentos da conta corrente; a Q5 seria atendida só quando o produto escolhido fosse um cartão — e por isso continua na `lancamentos_por_produto`. O segundo motivo aparece mesmo entre os cartões. Tente a Q3, que filtra por situação:
 
 > **Provoque este erro.**
 
