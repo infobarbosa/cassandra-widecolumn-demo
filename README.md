@@ -259,6 +259,8 @@ Para exercitar tudo isso, este laboratório usa um caso: o **infobarBank**, um b
 
 O problema é o aplicativo. Milhões de clientes abrem o app ao longo do dia, e cada abertura pede saldo, últimos lançamentos e limite dos cartões. Se cada uma dessas leituras batesse no core, o sistema que precisa processar transferências passaria o dia respondendo a quem só quer olhar o extrato.
 
+![As três telas do app do infobarBank: início, com o nome da cliente, o saldo, os últimos lançamentos e os cartões; extrato do mês, com filtros; e o detalhe de um lançamento](diagramas/01b-telas-infobarbank.svg)
+
 A solução do banco é o primeiro padrão de 1.d, a leitura separada da escrita:
 
 ![O app escreve no core bancário (DB2); um CDC replica cada mudança via Kafka para o Cassandra; o app lê do Cassandra por uma API](diagramas/01-arquitetura-infobarbank.svg)
@@ -516,7 +518,11 @@ A lista completa está na [documentação](https://cassandra.apache.org/doc/late
 
 ### 3.b. A tabela de clientes
 
-A primeira peça do aplicativo é o cadastro de clientes. Estas cinco pessoas você vai reencontrar na Parte 2, no sistema completo do banco — inclusive com o mesmo `id_cliente`:
+A primeira peça do aplicativo é o cadastro de clientes: é dele que vem o nome que a tela inicial mostra.
+
+![A tela inicial do app com a saudação "Olá, Marivalda" em destaque: o nome da cliente vem do cadastro, a tabela de clientes desta seção](diagramas/03b-tela-cliente.svg)
+
+Estas cinco pessoas você vai reencontrar na Parte 2, no sistema completo do banco — inclusive com o mesmo `id_cliente`:
 
 ```sh
 # 3.b.1
@@ -821,11 +827,15 @@ Na `lab.cliente`, os três papéis se confundem: a chave tem uma coluna só, que
 
 ## 5. Wide partitions: partições de múltiplas linhas
 
-A Marivalda tem **três cartões de crédito**. O aplicativo precisa listá-los na tela inicial, com o limite de cada um. Vamos guardar os cartões na sua bancada — e errar primeiro, do jeito que quase todo mundo erra.
+A tela inicial do app, que você viu na seção 1, lista os cartões da cliente com o limite de cada um. A Marivalda tem **três**:
+
+![A tela inicial do app com os três cartões da Marivalda em destaque, de limites 1.000, 200 e 500: três cartões, uma cliente; como guardar os três e buscar todos de uma vez?](diagramas/05a-tela-cartoes.svg)
+
+A consulta por trás dessa parte da tela é sempre a mesma: *dada a cliente que entrou no app, quais são os cartões dela?* Vamos guardar os cartões na sua bancada — e errar primeiro, do jeito que quase todo mundo erra.
 
 ### 5.a. A primeira tentativa
 
-Cada cartão pertence a uma cliente, e a tela busca os cartões **pela cliente**. Pela seção 3, a busca só funciona pela chave — então a chave seria `id_cliente`:
+Cada cartão pertence a uma cliente, e a consulta busca os cartões **pela cliente**. Pela seção 3, a busca só funciona pela chave — então a chave seria `id_cliente`:
 
 ```sh
 # 5.a.1
@@ -850,7 +860,7 @@ INSERT INTO lab.cartao_credito (id_cliente, id_cartao, num_cartao, limite_total)
 
 ```
 
-Três `INSERT`, nenhum erro. A tela pede os cartões dela:
+Três `INSERT`, nenhum erro. Agora a consulta dos cartões dela:
 
 ```sh
 # 5.a.3
@@ -868,7 +878,7 @@ cqlsh -e "SELECT * FROM lab.cartao_credito WHERE id_cliente = '2b162060';"
 
 **Um cartão.** Os outros dois sumiram, sem erro e sem aviso. É o upsert da seção 3: a chave identifica a linha, e as três escritas tinham a mesma chave — então foram três escritas **na mesma linha**, e ficou a última.
 
-Esse é o primeiro dos três critérios que toda chave precisa passar, e o que mais engana porque não dá erro:
+Esse é o primeiro cuidado com uma chave, e o que mais engana porque não dá erro:
 
 > **Unicidade.** A chave primária precisa identificar **uma** linha de verdade. Se duas coisas diferentes podem ter a mesma chave, uma vai sobrescrever a outra.
 
@@ -889,7 +899,7 @@ CREATE TABLE lab.cartao_credito (
 
 ```
 
-A chave é única: nenhum cartão sobrescreveria outro. Agora a consulta que a tela faz:
+A chave é única: nenhum cartão sobrescreveria outro. Agora a consulta dos cartões da cliente:
 
 > **Provoque este erro.**
 
@@ -906,15 +916,15 @@ performance. If you want to execute this query despite the performance
 unpredictability, use ALLOW FILTERING"
 ```
 
-O mesmo erro da seção 3 — e com a tabela vazia: o Cassandra recusa pela forma da consulta, não pelos dados. A tela de cartões não tem em mãos o id de um cartão; tem o id da cliente que acabou de entrar no aplicativo. Com `id_cartao` como chave, cada cartão vira uma partição, e não há como pedir "todos os cartões desta cliente" sem varrer a tabela.
+O mesmo erro da seção 3 — e com a tabela vazia: o Cassandra recusa pela forma da consulta, não pelos dados. Quem consulta não tem em mãos o id de um cartão; tem o id da cliente que acabou de entrar no app. Com `id_cartao` como chave, cada cartão vira uma partição, e não há como pedir "todos os cartões desta cliente" sem varrer a tabela.
 
 > A chave precisa ser única, mas ser única não basta. **A tabela é modelada para a consulta**: a chave começa por aquilo que a aplicação tem em mãos no momento da leitura.
 
-Essa tabela não está errada em si: ela serviria a outra tela, a de detalhe de um cartão, em que o id já veio da lista anterior. Você vai reencontrar essa forma na seção 8.c, na Q7. Para a tela de cartões, é preciso outra chave.
+Essa tabela não está errada em si: ela serviria a outra consulta, a de um cartão específico, quando o app já tem o id dele em mãos. Para listar os cartões da cliente, é preciso outra chave.
 
 ### 5.c. A chave com duas partes
 
-A Marivalda é **uma** cliente com **vários** cartões. A chave precisa dizer as duas coisas: de quem é o cartão — o que a tela tem em mãos — e qual cartão é — o que distingue um do outro. Recrie a tabela:
+A Marivalda é **uma** cliente com **vários** cartões. A chave precisa dizer as duas coisas: de quem é o cartão — o que a consulta tem em mãos — e qual cartão é — o que distingue um do outro. Recrie a tabela:
 
 ```sh
 # 5.c.1
@@ -969,7 +979,7 @@ A ordem não é arrumação da consulta: é como o dado está gravado. Desenhada
 
 ![A partição 2b162060, da Marivalda, com três linhas ordenadas por id_cartao; a partição 2b16242a, da Jucilene, com uma linha](diagramas/08-particao-cartoes.svg)
 
-Esta é uma **wide partition** — uma partição de múltiplas linhas —, e é dela que vem o nome do modelo *wide-column*: uma partição que guarda muitas linhas, ordenadas pela clustering key, lidas de uma vez numa única ida ao disco. A tela de cartões da Marivalda é **uma** leitura, numa partição, num nó — por mais cartões que ela tenha.
+Esta é uma **wide partition** — uma partição de múltiplas linhas —, e é dela que vem o nome do modelo *wide-column*: uma partição que guarda muitas linhas, ordenadas pela clustering key, lidas de uma vez numa única ida ao disco. A lista de cartões da Marivalda é **uma** leitura, numa partição, num nó — por mais cartões que ela tenha.
 
 Na `lab.cliente`, com chave de uma coluna, cada partição tinha uma linha só. Agora você conhece a outra ponta, e os dois extremos têm riscos: a partição de uma linha não aproveita nada do modelo; a partição que cresce sem limite é um problema que a Parte 2 vai medir. Você vai encontrar o termo *wide partition* também nesse sentido negativo, em alertas e artigos sobre partições grandes demais: é a mesma estrutura, quando cresce sem controle (seção 8.f).
 
@@ -978,10 +988,10 @@ Na Parte 3 você vai abrir o arquivo desta tabela e ver as três linhas da Mariv
 ### 5.d. O que você deve conseguir explicar
 
 - Por que a primeira versão da tabela perdeu dois cartões sem dar erro.
-- Por que `id_cartao` sozinho, mesmo sendo único, não serve de chave para a tela de cartões.
+- Por que `id_cartao` sozinho, mesmo sendo único, não serve de chave para a consulta dos cartões da cliente.
 - A diferença de papel entre partition key e clustering key.
 - Por que o resultado veio ordenado por `id_cartao` sem `ORDER BY`.
-- O que é uma *wide partition*, e por que a tela de cartões é uma leitura só.
+- O que é uma *wide partition*, e por que a lista de cartões da cliente é uma leitura só.
 
 **→ Parte 2.** Você construiu duas peças do aplicativo à mão, uma tabela por vez. O sistema do banco tem doze. Como se decide quais tabelas criar, e qual chave cada uma recebe?
 
@@ -1013,6 +1023,8 @@ Uma cliente tem contas e cartões; contas e cartões geram lançamentos. É o di
 ### 6.b. O fluxo aplicacional
 
 O fluxo aplicacional é a sequência de consultas que a aplicação faz ao banco — os seus **padrões de acesso**, ou *access patterns*. No infobarBank, cada consulta nasce de uma tela do aplicativo; em outros sistemas, pode ser uma chamada de API, um job noturno ou outro serviço. O método é o mesmo.
+
+No infobarBank, são as três telas que você viu na seção 1, agora com a consulta que alimenta cada parte:
 
 ![Três telas do app: início com saldo, últimos lançamentos e cartões (Q1, Q3, Q2); extrato do mês com filtros (Q4, Q5, Q6); detalhe do lançamento (Q7)](diagramas/11-telas-q1-q7.svg)
 

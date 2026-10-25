@@ -12,10 +12,13 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 | `00a-modelo-wide-column` | 1 |
 | `00-casos-de-uso` | 1 |
 | `01-arquitetura-infobarbank` | 1 |
+| `01b-telas-infobarbank` | 1 |
 | `02-coordinator-replicas` | 2 |
 | `03-multi-datacenter` | 2 |
+| `03b-tela-cliente` | 3 |
 | `04-ring-token` | 4 |
 | `04b-quem-e-quem` | 4 |
+| `05a-tela-cartoes` | 5 |
 | `05-colunar-vs-widecolumn` | 10 |
 | `06-caminho-de-escrita` | 10 |
 | `07-compactacao` | 10 |
