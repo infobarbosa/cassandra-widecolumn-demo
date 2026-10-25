@@ -1059,7 +1059,7 @@ Aquela tabela acima não é documentação do modelo: **é o método.** Ela tem 
 | | Relacional | Cassandra |
 |---|---|---|
 | Começa em | entidades e relacionamentos | **as consultas** |
-| Depois | normaliza até a 3ª forma normal | uma tabela por consulta (seção 7.d) |
+| Depois | normaliza até a 3ª forma normal | uma tabela por consulta (seção 7.f) |
 | As consultas | se adaptam ao modelo, com `JOIN` | **definem** o modelo |
 | Consulta nova | quase sempre é só SQL novo | pode ser tabela nova, carga de dados e deploy |
 
@@ -1107,7 +1107,7 @@ Daí a ordem de trabalho, que é a desta seção:
 fluxo aplicacional  →  uma consulta por access pattern  →  o que a aplicação tem em mãos  →  PRIMARY KEY  →  tabela
 ```
 
-E o preço do método, que é honesto declarar agora: **a consulta que ninguém previu não tem tabela.** Nenhuma das doze responde "quais os dez maiores lançamentos da cliente no mês" — não porque seja difícil, mas porque essa tela não existia quando o modelo foi feito. Você vai reencontrar essa pergunta no desafio da seção 11, e as três saídas para ela são as da seção 10 e da seção 7.f: modelar mais uma tabela, aceitar um índice SAI, ou varrer com `ALLOW FILTERING`. Nenhuma é grátis.
+E o preço do método, que é honesto declarar agora: **a consulta que ninguém previu não tem tabela.** Nenhuma das doze responde "quais os dez maiores lançamentos da cliente no mês" — não porque seja difícil, mas porque essa tela não existia quando o modelo foi feito. Você vai reencontrar essa pergunta no desafio da seção 11, e as três saídas para ela são as da seção 10 e da seção 7.g: modelar mais uma tabela, aceitar um índice SAI, ou varrer com `ALLOW FILTERING`. Nenhuma é grátis.
 
 ### 6.d. Do fluxo às tabelas
 
@@ -1754,7 +1754,7 @@ WHERE id_lancamento='13327cf1';"
       13327cf1 | 2026-10-25 21:29:11.543000+0000 |  Loja de móveis | 401.42001 | APROVADA | c3fb61e7-7de4-4336-997a-337060cca668
 ```
 
-Confira contra a listagem anterior: mesmo estabelecimento, mesma data, mesmo valor. **É o mesmo lançamento, gravado em duas tabelas** — a listagem numa, o detalhe na outra. A tela de extrato e a tela de detalhe são duas consultas, então são duas tabelas. Esse padrão tem nome, e a 7.d volta a ele.
+Confira contra a listagem anterior: mesmo estabelecimento, mesma data, mesmo valor. **É o mesmo lançamento, gravado em duas tabelas** — a listagem numa, o detalhe na outra. A tela de extrato e a tela de detalhe são duas consultas, então são duas tabelas. Esse padrão tem nome, e a 7.f volta a ele.
 
 E repare no que a `lancamentos_detalhe` tem de diferente das outras tabelas de lançamento: uma coluna a mais, `codigo_autenticacao`. A tela de detalhe é a única que mostra esse campo, então ele existe só aqui. **Tabela por consulta significa também colunas por consulta.**
 
@@ -1902,35 +1902,6 @@ LIMIT 4;"
 
 `tipo_operacao` é a **direção contábil** do lançamento: `DEBITO` é saída de dinheiro, `CREDITO` é entrada — salário caindo na conta, estorno no cartão. Num extrato, entradas são naturalmente raras, então uma consulta filtrando `CREDITO` pode devolver poucas linhas ou nenhuma. Não é erro seu.
 
-#### Desnormalização
-
-Você acabou de ler o mesmo lançamento em quatro tabelas — e a 7.c já o tinha encontrado numa quinta, a de detalhe. Isso tem nome: **desnormalização**, gravar o mesmo dado em mais de um lugar para que cada consulta encontre tudo o que precisa numa partição só. É o oposto da normalização do modelo relacional, onde cada fato existe uma vez e as consultas o remontam com `JOIN`.
-
-| | Relacional | Cassandra |
-|---|---|---|
-| A regra | normalizar; cada fato uma vez | uma tabela por consulta |
-| Desnormalizar é | **exceção**, um desvio justificado por desempenho | **o padrão** |
-
-O preço vem em três partes:
-
-- **espaço**: o dado ocupa o disco N vezes;
-- **escrita**: cada lançamento novo vira N escritas, uma por tabela;
-- **sincronia**: não há transação nem chave estrangeira entre as tabelas. Se a aplicação deixar de gravar uma das cópias, as tabelas passam a discordar, e o banco não reclama.
-
-Em troca, cada tela é uma leitura pontual numa partição, com o mesmo custo para mil ou para um bilhão de lançamentos. **Escreve-se o dado N vezes para lê-lo barato N vezes.** E a técnica não se limita aos lançamentos:
-
-| O mesmo dado, repetido em | Para atender |
-|---|---|
-| `infobarbank.cliente` + `cliente_por_cpf` + `cliente_por_email` + `cliente_por_telefone` | login por id, por CPF, por e-mail, por telefone |
-| `infobarshop.cliente` + `cliente_por_cpf` + `cliente_por_email` | o mesmo, na infobarShop |
-| `lancamentos_detalhe` × as quatro tabelas de lançamento | a tela de detalhe e as telas de lista (7.c) |
-| `lancamentos_por_periodo` + `_por_produto` + `_por_status` + `_por_tipo` | os mesmos lançamentos, quatro filtros (acima) |
-| `pedido_detalhe` × as tabelas de pedido do `infobarshop` | idem, na infobarShop |
-
-Não existe uma única tabela do `infobarbank` cujo conteúdo não apareça em outra. **É a regra, não a exceção.**
-
-> O [Apêndice E](#e-desnormalização-na-prática) mede esses custos na sua bancada e provoca, de propósito, uma cópia fora de sincronia.
-
 #### Ordenação: o critério que não dá erro
 
 Nas quatro tabelas, a última clustering key antes do id é `data_hora`, em ordem decrescente. É isso que faz o `LIMIT 5` da Q3 devolver os cinco **mais recentes** sem `ORDER BY`. Veja o que acontece quando a chave é única mas não ordena pelo que a tela mostra. Na sua bancada, um extrato cuja clustering key é só o id do lançamento, gerado com `uuid()`:
@@ -1992,123 +1963,7 @@ cqlsh -e "DROP TABLE lab.extrato_por_uuid;"
 
 ```
 
-### 7.e. Os erros que ensinam
-
-Quatro tentativas que o Cassandra recusa. Cada mensagem diz algo diferente sobre a chave primária.
-
-**Partition key composta pela metade.** A tabela pede `(id_cliente, competencia)`:
-
-> **Provoque este erro.**
-
-```sh
-# 7.e.1
-cqlsh -e "SELECT * FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060';"
-
-```
-
-```
-InvalidRequest: ... "Cannot execute this query as it might involve data filtering
-and thus may have unpredictable performance..."
-```
-
-O hash é calculado sobre o par completo. Com metade da chave, o Cassandra não sabe calcular a partição — teria que procurar em todas. Guarde a diferença: **partition key composta exige todas as colunas**; clustering key, não.
-
-**Clustering key sem a partition key.**
-
-> **Provoque este erro.**
-
-```sh
-# 7.e.2
-cqlsh -e "SELECT * FROM infobarbank.lancamentos_por_status WHERE status='APROVADA';"
-
-```
-
-```
-InvalidRequest: ... "Cannot execute this query as it might involve data filtering..."
-```
-
-Mesma mensagem, outra causa. `status` ordena as linhas *dentro* da partição; sem saber a partição, essa ordenação não serve de nada.
-
-**Pular uma clustering key.** Em `lancamentos_por_produto` a ordem é `id_produto`, depois `data_hora`. Tente filtrar a segunda sem a primeira:
-
-> **Provoque este erro.**
-
-```sh
-# 7.e.3
-cqlsh -e "
-SELECT * FROM infobarbank.lancamentos_por_produto
-WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND data_hora>='$COMPETENCIA-01';"
-
-```
-
-```
-InvalidRequest: ... "PRIMARY KEY column "data_hora" cannot be restricted as
-preceding column "id_produto" is not restricted"
-```
-
-Esta é a mensagem mais informativa das quatro, e vale decorar o princípio: as clustering keys formam uma ordem, como as palavras num dicionário. Você pode procurar por prefixo, não por meio. Filtrar `data_hora` sem `id_produto` seria procurar todas as palavras cuja segunda letra é "a".
-
-**Ordenar por coluna que não é clustering key.**
-
-> **Provoque este erro.**
-
-```sh
-# 7.e.4
-cqlsh -e "
-SELECT * FROM infobarbank.lancamentos_por_periodo
-WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA'
-ORDER BY valor DESC;"
-
-```
-
-```
-InvalidRequest: ... "Order by is currently only supported on the clustered columns
-of the PRIMARY KEY, got valor"
-```
-
-O Cassandra não ordena em tempo de consulta: ele **entrega** na ordem em que gravou. Querer os lançamentos por valor não é uma consulta diferente — é uma **tabela** diferente, com `valor` como clustering key. Foi exatamente esse raciocínio que produziu as quatro tabelas de 7.d.
-
-### 7.f. O que o `ALLOW FILTERING` faz
-
-O erro sugere `ALLOW FILTERING` desde a seção 3. Vamos ver o que ele custa, com o `TRACING` ligado.
-
-Primeiro a consulta correta, com a partition key completa:
-
-```sh
-# 7.f.1
-cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA';"
-
-```
-
-Nas linhas do rastro, duas importam:
-
-```
-Executing single-partition query on lancamentos_por_periodo
-Read 21 live rows and 0 tombstone cells
-```
-
-**Uma partição, 21 linhas lidas.** Agora a mesma pergunta, sem informar a cliente, forçando o filtro:
-
-```sh
-# 7.f.2
-cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE competencia='$COMPETENCIA' ALLOW FILTERING;"
-
-```
-
-```
-Computing ranges to query
-Submitting range requests on 17 ranges with a concurrency of 1 (169.92 rows per range expected)
-Executing seq scan across 1 sstables for (min(-9223372036854775808), min(-9223372036854775808)]
-Read 153 live rows and 0 tombstone cells
-```
-
-Não é mais uma consulta a uma partição: é uma **varredura sequencial** de todo o ring de tokens, de -2⁶³ a 2⁶³-1, para depois descartar o que não bate. Leu 153 linhas para devolver as que interessavam.
-
-O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas respondem instantaneamente. É por isso que o Cassandra recusa por padrão em vez de deixar você descobrir — a consulta que varre mil linhas em desenvolvimento varre mil vezes mais em produção, e nesse dia ela não é lenta, ela é uma varredura em todos os nós do cluster ao mesmo tempo.
-
-> `ALLOW FILTERING` tem lugar legítimo: consulta administrativa pontual, exploração de dados, tabela pequena e limitada por natureza. O que ele não é: solução para uma consulta que a aplicação faz a cada requisição.
-
-### 7.g. Monte o app
+### 7.e. Monte o app
 
 Você percorreu as sete consultas uma a uma. Agora junte tudo: o **app do infobarBank** é um emulador do aplicativo do banco, com as três telas da seção 6, que só funciona com as consultas que você escrever.
 
@@ -2131,7 +1986,152 @@ Como usar:
 
 O objetivo é deixar as sete abas verdes. Se travar, o botão **Dica** dá duas pistas por consulta: primeiro a tabela, depois a forma do `WHERE`.
 
-### 7.h. O que você deve conseguir explicar
+### 7.f. Desnormalização
+
+Montando o app, você leu o mesmo lançamento em cinco tabelas: no extrato (Q4), nos três filtros (Q3, Q5 e Q6) e no detalhe (Q7). Isso tem nome: **desnormalização**, gravar o mesmo dado em mais de um lugar para que cada consulta encontre tudo o que precisa numa partição só. É o oposto da normalização do modelo relacional, onde cada fato existe uma vez e as consultas o remontam com `JOIN`.
+
+| | Relacional | Cassandra |
+|---|---|---|
+| A regra | normalizar; cada fato uma vez | uma tabela por consulta |
+| Desnormalizar é | **exceção**, um desvio justificado por desempenho | **o padrão** |
+
+O preço vem em três partes:
+
+- **espaço**: o dado ocupa o disco N vezes;
+- **escrita**: cada lançamento novo vira N escritas, uma por tabela;
+- **sincronia**: não há transação nem chave estrangeira entre as tabelas. Se a aplicação deixar de gravar uma das cópias, as tabelas passam a discordar, e o banco não reclama.
+
+Em troca, cada tela é uma leitura pontual numa partição, com o mesmo custo para mil ou para um bilhão de lançamentos. **Escreve-se o dado N vezes para lê-lo barato N vezes.** E a técnica não se limita aos lançamentos:
+
+| O mesmo dado, repetido em | Para atender |
+|---|---|
+| `infobarbank.cliente` + `cliente_por_cpf` + `cliente_por_email` + `cliente_por_telefone` | login por id, por CPF, por e-mail, por telefone |
+| `infobarshop.cliente` + `cliente_por_cpf` + `cliente_por_email` | o mesmo, na infobarShop |
+| `lancamentos_detalhe` × as quatro tabelas de lançamento | a tela de detalhe e as telas de lista (7.c) |
+| `lancamentos_por_periodo` + `_por_produto` + `_por_status` + `_por_tipo` | os mesmos lançamentos, quatro filtros (7.d) |
+| `pedido_detalhe` × as tabelas de pedido do `infobarshop` | idem, na infobarShop |
+
+Não existe uma única tabela do `infobarbank` cujo conteúdo não apareça em outra. **É a regra, não a exceção.**
+
+> O [Apêndice E](#e-desnormalização-na-prática) mede esses custos na sua bancada e provoca, de propósito, uma cópia fora de sincronia.
+
+### 7.g. O que o `ALLOW FILTERING` faz
+
+O erro sugere `ALLOW FILTERING` desde a seção 3, e o app marcou em âmbar as respostas que o usam. Vamos ver o que ele custa, com o `TRACING` ligado.
+
+Primeiro a consulta correta, com a partition key completa:
+
+```sh
+# 7.g.1
+cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA';"
+
+```
+
+Nas linhas do rastro, duas importam:
+
+```
+Executing single-partition query on lancamentos_por_periodo
+Read 21 live rows and 0 tombstone cells
+```
+
+**Uma partição, 21 linhas lidas.** Agora a mesma pergunta, sem informar a cliente, forçando o filtro:
+
+```sh
+# 7.g.2
+cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE competencia='$COMPETENCIA' ALLOW FILTERING;"
+
+```
+
+```
+Computing ranges to query
+Submitting range requests on 17 ranges with a concurrency of 1 (169.92 rows per range expected)
+Executing seq scan across 1 sstables for (min(-9223372036854775808), min(-9223372036854775808)]
+Read 153 live rows and 0 tombstone cells
+```
+
+Não é mais uma consulta a uma partição: é uma **varredura sequencial** de todo o ring de tokens, de -2⁶³ a 2⁶³-1, para depois descartar o que não bate. Leu 153 linhas para devolver as que interessavam.
+
+O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas respondem instantaneamente. É por isso que o Cassandra recusa por padrão em vez de deixar você descobrir — a consulta que varre mil linhas em desenvolvimento varre mil vezes mais em produção, e nesse dia ela não é lenta, ela é uma varredura em todos os nós do cluster ao mesmo tempo.
+
+> `ALLOW FILTERING` tem lugar legítimo: consulta administrativa pontual, exploração de dados, tabela pequena e limitada por natureza. O que ele não é: solução para uma consulta que a aplicação faz a cada requisição.
+
+### 7.h. Os erros que ensinam
+
+Quatro tentativas que o Cassandra recusa. Cada mensagem diz algo diferente sobre a chave primária.
+
+**Partition key composta pela metade.** A tabela pede `(id_cliente, competencia)`:
+
+> **Provoque este erro.**
+
+```sh
+# 7.h.1
+cqlsh -e "SELECT * FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060';"
+
+```
+
+```
+InvalidRequest: ... "Cannot execute this query as it might involve data filtering
+and thus may have unpredictable performance..."
+```
+
+O hash é calculado sobre o par completo. Com metade da chave, o Cassandra não sabe calcular a partição — teria que procurar em todas. Guarde a diferença: **partition key composta exige todas as colunas**; clustering key, não.
+
+**Clustering key sem a partition key.**
+
+> **Provoque este erro.**
+
+```sh
+# 7.h.2
+cqlsh -e "SELECT * FROM infobarbank.lancamentos_por_status WHERE status='APROVADA';"
+
+```
+
+```
+InvalidRequest: ... "Cannot execute this query as it might involve data filtering..."
+```
+
+Mesma mensagem, outra causa. `status` ordena as linhas *dentro* da partição; sem saber a partição, essa ordenação não serve de nada.
+
+**Pular uma clustering key.** Em `lancamentos_por_produto` a ordem é `id_produto`, depois `data_hora`. Tente filtrar a segunda sem a primeira:
+
+> **Provoque este erro.**
+
+```sh
+# 7.h.3
+cqlsh -e "
+SELECT * FROM infobarbank.lancamentos_por_produto
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND data_hora>='$COMPETENCIA-01';"
+
+```
+
+```
+InvalidRequest: ... "PRIMARY KEY column "data_hora" cannot be restricted as
+preceding column "id_produto" is not restricted"
+```
+
+Esta é a mensagem mais informativa das quatro, e vale decorar o princípio: as clustering keys formam uma ordem, como as palavras num dicionário. Você pode procurar por prefixo, não por meio. Filtrar `data_hora` sem `id_produto` seria procurar todas as palavras cuja segunda letra é "a".
+
+**Ordenar por coluna que não é clustering key.**
+
+> **Provoque este erro.**
+
+```sh
+# 7.h.4
+cqlsh -e "
+SELECT * FROM infobarbank.lancamentos_por_periodo
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA'
+ORDER BY valor DESC;"
+
+```
+
+```
+InvalidRequest: ... "Order by is currently only supported on the clustered columns
+of the PRIMARY KEY, got valor"
+```
+
+O Cassandra não ordena em tempo de consulta: ele **entrega** na ordem em que gravou. Querer os lançamentos por valor não é uma consulta diferente — é uma **tabela** diferente, com `valor` como clustering key. Foi exatamente esse raciocínio que produziu as quatro tabelas de 7.d.
+
+### 7.i. O que você deve conseguir explicar
 
 - Os três critérios da chave, e um exemplo de chave que falha em cada um.
 - A diferença entre partition key composta e múltiplas clustering keys — inclusive quais colunas cada uma exige na consulta.
@@ -2139,6 +2139,8 @@ O objetivo é deixar as sete abas verdes. Se travar, o botão **Dica** dá duas 
 - Por que a tela de extrato do seu banco tem um seletor de mês.
 - O que é bucketing, o que ele protege, o que ele cobra, e como escolher o período do bucket.
 - Dado um `PRIMARY KEY`, qual consulta ele responde. E dada uma consulta, qual `PRIMARY KEY` ela pede.
+- O que é desnormalização, o que ela cobra e o que ela compra.
+- Por que `ALLOW FILTERING` não é solução para uma consulta que a aplicação faz a cada acesso.
 
 **→ Próxima seção.** Todas as consultas até aqui foram digitadas no `cqlsh`. Nenhum aplicativo funciona assim. Vamos executar o mesmo fluxo Q1 a Q7 de dentro de uma aplicação Python.
 
@@ -2350,7 +2352,7 @@ cassandra.InvalidRequest: Error from server: code=2200 [Invalid query]
 message="Cannot execute this query as it might involve data filtering..."
 ```
 
-É o primeiro erro de 7.e — partition key composta pela metade — agora como exceção Python. **O driver não protege de modelagem errada**, e não existe camada de abstração que resolva isso: as regras da seção 7 valem em qualquer linguagem.
+É o primeiro erro de 7.h — partition key composta pela metade — agora como exceção Python. **O driver não protege de modelagem errada**, e não existe camada de abstração que resolva isso: as regras da seção 7 valem em qualquer linguagem.
 
 O `SELECT DISTINCT` sobre as colunas da partition key é válido porque percorre o índice de partições, não os dados. Mas continua sendo conveniência de laboratório: percorrer todas as partições não escala. Um aplicativo de banco não descobre a competência — ele a recebe do seletor de mês da tela.
 
@@ -2387,7 +2389,7 @@ Onze páginas para mil linhas em páginas de cem — a última vem vazia. O Cass
 
 O `fetch_size` padrão do driver é 5000. O que ele protege é a memória do **cliente** e o tempo de resposta do **coordinator**: sem paginação, uma consulta ampla obrigaria o nó a montar o resultado inteiro antes de enviar qualquer coisa.
 
-Isso não torna consulta ampla aceitável. Paginar uma varredura continua sendo uma varredura — a seção 7.f vale igual. Paginação existe para o caso em que **uma partição legítima** tem muitas linhas.
+Isso não torna consulta ampla aceitável. Paginar uma varredura continua sendo uma varredura — a seção 7.g vale igual. Paginação existe para o caso em que **uma partição legítima** tem muitas linhas.
 
 ### 8.f. Assíncrono
 
@@ -2414,7 +2416,7 @@ cartões: ['007c2c1c', '897199aa', '9a748c3c']
 
 `execute_async` devolve um future imediatamente; `result()` espera. Como cada consulta vai para uma partição diferente — e, em cluster, possivelmente para nós diferentes — o paralelismo é real.
 
-Esse padrão é o que torna viável o modelo da Parte 2. Uma tela que precisa de dados de cinco tabelas faz cinco leituras pontuais em paralelo, e isso é mais rápido e mais previsível do que um `JOIN` de cinco tabelas em qualquer banco relacional. **A desnormalização da seção 7.d não é um preço que se paga; é o que permite a leitura ser trivial.**
+Esse padrão é o que torna viável o modelo da Parte 2. Uma tela que precisa de dados de cinco tabelas faz cinco leituras pontuais em paralelo, e isso é mais rápido e mais previsível do que um `JOIN` de cinco tabelas em qualquer banco relacional. **A desnormalização da seção 7.f não é um preço que se paga; é o que permite a leitura ser trivial.**
 
 ### 8.g. Como estragar um projeto com Cassandra
 
@@ -2423,7 +2425,7 @@ Tudo o que você viu até aqui cabe numa lista curta de erros. São os que mais 
 | Erro | Por que dá errado | Onde você viu |
 |---|---|---|
 | **Usar Cassandra porque outro time usou** | O banco é ótimo para um padrão de acesso e ruim para os outros. A escolha vem do problema, não da moda. | seção 1 |
-| **Usar como banco relacional** | Normalizar e esperar `JOIN` leva a consultas que o Cassandra recusa, ou a `ALLOW FILTERING` em produção. | seções 6.c e 7.f |
+| **Usar como banco relacional** | Normalizar e esperar `JOIN` leva a consultas que o Cassandra recusa, ou a `ALLOW FILTERING` em produção. | seções 6.c e 7.g |
 | **Começar pelo modelo lógico ou físico** | Sem o fluxo de telas, a chave é um chute, e chave errada só se corrige com tabela nova e migração de dados. | seção 6 |
 | **Deixar a infraestrutura para depois** | Fator de replicação, datacenters e tamanho de partição são decididos na keyspace e na chave, no primeiro dia. | seções 2 e 7.b |
 | **Pôr um balanceador de carga na frente** | O driver já sabe qual nó tem o dado (`TokenAwarePolicy`). Um balanceador esconde isso e acrescenta um salto a cada consulta. | acima, em "Leia o código" |
@@ -3080,7 +3082,7 @@ Index query accessed memtable indexes, 1 SSTable index, and 1 segment,
 post-filtered 1 row in 1 partition, and took 1074 microseconds.
 ```
 
-A boa notícia está no fim: **1 linha lida, 1 partição** — nada de varredura sequencial como no `ALLOW FILTERING` da seção 7.f.
+A boa notícia está no fim: **1 linha lida, 1 partição** — nada de varredura sequencial como no `ALLOW FILTERING` da seção 7.g.
 
 A notícia importante está no meio: **`Submitting range requests on 17 ranges`**. O índice SAI é **local a cada nó**: ele sabe onde está o dado *dentro* do nó, mas não sabe em qual nó procurar. Então o coordinator pergunta a todos.
 
@@ -3258,7 +3260,7 @@ Use estas perguntas para conferir cada resposta de Q1' a Q8':
 Q9' e Q10' não falam de uma cliente: falam de **todas as vendas** de um estado, ou de um produto, num dia. Para elas, a pergunta da seção 7 — *o que eu tenho em mãos?* — tem outra resposta, e é isso que você precisa mostrar. Para cada uma, quatro coisas:
 
 1. **A tentativa.** A consulta que você escreveria, numa das nove tabelas, e o erro que o Cassandra devolve.
-2. **O custo.** A mesma consulta com `ALLOW FILTERING` e `TRACING ON`, como na seção 7.f. Anote quantas linhas foram lidas para devolver quantas.
+2. **O custo.** A mesma consulta com `ALLOW FILTERING` e `TRACING ON`, como na seção 7.g. Anote quantas linhas foram lidas para devolver quantas.
 3. **O porquê.** Qual coluna está na partition key de cada uma das nove tabelas, e por que nenhuma delas é algo que essas consultas têm em mãos.
 4. **Uma proposta.** O que precisaria existir para responder bem: a `PRIMARY KEY` de uma tabela nova (sem criá-la), o risco que ela traz — pense em quantas vendas um único estado concentra num dia de Black Friday — e se essa pergunta deveria mesmo ser respondida pelo Cassandra (seções 1 e 10).
 
@@ -3287,7 +3289,7 @@ cqlsh -e "TRACING ON; SELECT count(*) FROM infobarshop.pedido_detalhe WHERE uf='
 
 ```
 
-No rastro, `Submitting range requests on 17 ranges` e `Read 12004 live rows`: o Cassandra varreu **a tabela inteira** para devolver um punhado de pedidos — às vezes nenhum. É a varredura da seção 7.f, agora sobre todos os pedidos da loja.
+No rastro, `Submitting range requests on 17 ranges` e `Read 12004 live rows`: o Cassandra varreu **a tabela inteira** para devolver um punhado de pedidos — às vezes nenhum. É a varredura da seção 7.g, agora sobre todos os pedidos da loja.
 
 **3. O porquê.** As partition keys das nove tabelas são `id_cliente`, `cpf`, `email`, `(id_cliente, competencia)`, `(id_cliente, produto)` e `id_pedido`. Todas identificam **uma cliente** ou **um pedido**, porque o esquema serve ao painel da cliente: é isso que aquela aplicação tem em mãos. A Q9' tem em mãos um estado e um dia; a Q10', um produto e um dia. Nenhuma tabela começa por isso, e a regra da seção 7 não tem exceção: sem a partition key, não há leitura pontual.
 
@@ -3642,7 +3644,7 @@ docker rm -f cassandra-lab
 
 ## E. Desnormalização na prática
 
-Este apêndice aprofunda o tópico de desnormalização da 7.d: mede os custos na sua bancada e provoca, de propósito, uma cópia fora de sincronia. Rode-o depois da Parte 3 — ele usa a `lab.cliente` como a seção 9 a deixou.
+Este apêndice aprofunda o tópico de desnormalização da 7.f: mede os custos na sua bancada e provoca, de propósito, uma cópia fora de sincronia. Rode-o depois da Parte 3 — ele usa a `lab.cliente` como a seção 9 a deixou.
 
 ### O mesmo dado, quatro vezes
 
@@ -3885,7 +3887,7 @@ A regra, e ela erra para os dois lados:
 
 | Erro | Sintoma |
 |---|---|
-| **Tabelas de menos** | a consulta cai em `ALLOW FILTERING`, varredura, latência que cresce com a base (seção 7.f) |
+| **Tabelas de menos** | a consulta cai em `ALLOW FILTERING`, varredura, latência que cresce com a base (seção 7.g) |
 | **Tabelas demais** | amplificação de escrita e superfície de bug de sincronia — a falha que você acabou de provocar, multiplicada |
 
 Duas perguntas resolvem a maioria dos casos:
