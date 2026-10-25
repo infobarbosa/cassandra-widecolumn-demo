@@ -827,21 +827,17 @@ Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, ca
 
 ### 4.d. Quem é quem numa chave
 
-Volte às pastas da 4.a. A `PRIMARY KEY` dessa tabela imaginária tem três colunas, e cada uma tem um papel diferente:
+Agora no caso do infobarBank: os lançamentos de cada cliente, numa tabela com `PRIMARY KEY (id_cliente, data_hora, id_lancamento)`. A chave tem três colunas, e cada uma tem um papel diferente:
 
-![Exemplo hipotético, partições num data lake: a tabela imaginária transacoes_por_dia, com PRIMARY KEY (dia, hora, id_transacao), desenhada como três pastas de data lake, uma por dia: uma linha destacada é a primary key (corte horizontal), uma pasta inteira é a partição (corte vertical) e uma seta mostra a ordem das linhas dentro da pasta (clustering key)](diagramas/04b-quem-e-quem.svg)
+![Os lançamentos do infobarBank numa tabela com PRIMARY KEY (id_cliente, data_hora, id_lancamento): três partições, uma por cliente, cada uma com os lançamentos do mais recente para o mais antigo; uma linha destacada é a primary key (corte horizontal), uma partição inteira é a partition key (corte vertical) e uma seta mostra a ordem das linhas dentro da partição (clustering key)(diagramas/04b-quem-e-quem.svg)
 
 | | Corte | Papel |
 |---|---|---|
-| **primary key** | horizontal | identifica uma linha, e só uma: é a chave inteira, `dia + hora + id_transacao` |
+| **primary key** | horizontal | identifica uma linha, e só uma: é a chave inteira, `id_cliente + data_hora + id_lancamento` |
 | **partition key** | vertical | agrupa as linhas que moram juntas — e, num cluster, decide em qual nó. A regra: **armazene junto o que você quer recuperar junto** |
 | **clustering key** | — | decide **em que ordem** as linhas ficam dentro da partição |
 
 Na `lab.cliente`, os três papéis se confundem: a chave tem uma coluna só, que é ao mesmo tempo primary key e partition key, e não existe clustering key. Por isso cada partição tem exatamente uma linha: o caso mais simples que existe, e também o menos interessante, porque uma partição de uma linha só não aproveita nada do que o Cassandra sabe fazer. Na seção 5 os três papéis se separam.
-
-O outro extremo — uma partição que cresce sem limite — é um problema de verdade, e existe uma técnica para controlá-lo. Ela tem seção própria: 8.f.
-
-**→ Próxima seção.** Até aqui cada partição de `lab.cliente` teve uma linha só — a forma mais simples, e a menos "wide" que existe. Na próxima seção uma partição vai ganhar várias linhas.
 
 ---
 
