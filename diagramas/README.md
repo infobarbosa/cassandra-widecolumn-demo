@@ -11,6 +11,7 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 |---|---|
 | `00a-modelo-wide-column` | 1 |
 | `00-casos-de-uso` | 1 |
+| `01a-antes-core` | 1 |
 | `01-arquitetura-infobarbank` | 1 |
 | `01b-telas-infobarbank` | 1 |
 | `02-coordinator-replicas` | 2 |

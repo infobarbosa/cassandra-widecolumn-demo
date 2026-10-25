@@ -261,6 +261,10 @@ O problema é o aplicativo. Milhões de clientes abrem o app ao longo do dia, e 
 
 ![As três telas do app do infobarBank: início, com o nome da cliente, o saldo, os últimos lançamentos e os cartões; extrato do mês, com filtros; e o detalhe de um lançamento](diagramas/01b-telas-infobarbank.svg)
 
+No começo era assim: o app lia e escrevia direto no core.
+
+![Antes: o app lê e escreve direto no core bancário (Oracle). As leituras de saldo, extrato e cartões, a cada abertura do app, chegam ao mesmo banco que processa as transferências; os gargalos: disputa de CPU, memória e disco, crescimento só com servidor maior, licença por núcleo e fila no pico](diagramas/01a-antes-core.svg)
+
 A solução do banco é o primeiro padrão de 1.d, a leitura separada da escrita:
 
 ![O app escreve no core bancário (Oracle); um CDC replica cada mudança via Kafka para o Cassandra; o app lê do Cassandra por uma API](diagramas/01-arquitetura-infobarbank.svg)
