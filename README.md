@@ -1318,72 +1318,37 @@ cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_por_periodo;"
 
 A partition key agora tem **duas** colunas: `id_cliente` **e** `competencia`. O hash é calculado sobre o par.
 
-#### Escolhendo a competência
+#### A competência dos exemplos
 
-Toda consulta a essas tabelas agora precisa informar um mês. Os lançamentos são gerados em relação à data de execução, então as competências disponíveis no seu ambiente são outras. Descubra:
+Toda consulta a essas tabelas agora informa um mês. Os lançamentos do seu ambiente foram gerados em relação à data em que ele subiu, então os meses disponíveis são outros. Guarde numa variável o mês que os exemplos vão usar, e o anterior a ele:
 
 ```sh
 # 7.b.2
-cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_periodo;"
+MESES=$(cqlsh -e "SELECT DISTINCT id_cliente, competencia FROM infobarbank.lancamentos_por_periodo;" \
+        | awk '$1=="2b162060" {print $3}' | sort)
+COMPETENCIA=$(echo "$MESES" | tail -2 | head -1)
+COMPETENCIA_ANTERIOR=$(echo "$MESES" | tail -3 | head -1)
+echo "COMPETENCIA=$COMPETENCIA  COMPETENCIA_ANTERIOR=$COMPETENCIA_ANTERIOR"
 
 ```
 
 ```
-   2b162060 |     2026-05
-   2b162060 |     2026-06
-   2b162060 |     2026-07
-[...]
+COMPETENCIA=2026-06  COMPETENCIA_ANTERIOR=2026-05
 ```
 
-Use uma competência **do meio da lista** nos exemplos — nem a primeira, nem a última. O motivo aparece ao olhar a data do último lançamento de cada uma:
+Os comandos daqui em diante usam `$COMPETENCIA`, e as saídas mostradas são de um ambiente em que ela valia `2026-06`.
+
+> A variável vale só neste terminal. Se abrir outro, rode o 7.b.2 de novo.
+
+Com ela, o extrato da Q4:
 
 ```sh
 # 7.b.3
-cqlsh -e "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
-
-```
-
-```
- 2026-06-29 19:10:14.797000+0000
-```
-
-```sh
-# 7.b.4
-cqlsh -e "SELECT max(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-07';"
-
-```
-
-```
- 2026-07-25 19:10:15.437000+0000
-```
-
-A última competência para no dia **25** — que é hoje. Ela é o **mês corrente**, e por isso cobre um mês incompleto. A primeira da lista tem o problema simétrico:
-
-```sh
-# 7.b.5
-cqlsh -e "SELECT min(data_hora) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2025-07';"
-
-```
-
-```
- 2025-07-26 19:10:12.988000+0000
-```
-
-Começa no dia 26, porque os lançamentos foram distribuídos nos últimos 365 dias — e 365 dias atrás era o dia 26 do mês. **As duas pontas da série são parciais.**
-
-Não é defeito do laboratório: é o que acontece em qualquer base de produção, e é o tipo de detalhe que derruba relatório — um gráfico de movimento por mês mostra queda no mês corrente todos os meses, e quem não souber disso vai procurar explicação de negócio para um artefato do calendário.
-
-> Note que a **contagem** de lançamentos pode não denunciar isso: os lançamentos são sorteados, e um mês incompleto pode acabar com mais registros que um mês fechado. O que denuncia é a data, não o volume.
-
-Nos exemplos a seguir aparece `2026-06`; troque por uma competência intermediária do seu ambiente. Com ela, o extrato da Q4:
-
-```sh
-# 7.b.6
 cqlsh -e "
 SELECT data_hora, id_produto, tipo_operacao, estabelecimento, valor
 FROM infobarbank.lancamentos_por_periodo
-WHERE id_cliente='2b162060' AND competencia='2026-06'
-  AND data_hora >= '2026-06-19' AND data_hora < '2026-06-28';"
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA'
+  AND data_hora >= '$COMPETENCIA-19' AND data_hora < '$COMPETENCIA-28';"
 
 ```
 
@@ -1410,7 +1375,7 @@ Duas coisas nesse resultado.
 Vamos construir a versão sem bucket e comparar. Primeiro a tabela:
 
 ```sh
-# 7.b.7
+# 7.b.4
 cqlsh -e "
 CREATE TABLE lab.lancamento_sem_bucket (
     id_cliente      text,
@@ -1426,7 +1391,7 @@ CREATE TABLE lab.lancamento_sem_bucket (
 Agora 200 mil lançamentos de **uma só cliente**, distribuídos em dez anos — o que um correntista ativo acumula em uma década:
 
 ```sh
-# 7.b.8
+# 7.b.5
 LC_ALL=C awk 'BEGIN{
   srand(42);
   split("Supermercado,Restaurante,Farmácia,Padaria,Posto de gasolina", est, ",");
@@ -1438,7 +1403,7 @@ LC_ALL=C awk 'BEGIN{
 ```
 
 ```sh
-# 7.b.9
+# 7.b.6
 cqlsh -e "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, estabelecimento, valor) FROM 'lancamentos.csv' WITH HEADER=TRUE;"
 
 ```
@@ -1452,7 +1417,7 @@ cqlsh -e "COPY lab.lancamento_sem_bucket (id_cliente, data_hora, id_lancamento, 
 Grave em disco o que ainda está em memória:
 
 ```sh
-# 7.b.10
+# 7.b.7
 nodetool flush lab lancamento_sem_bucket
 
 ```
@@ -1460,7 +1425,7 @@ nodetool flush lab lancamento_sem_bucket
 E veja quantos arquivos de dados — as **SSTables** — a tabela tem:
 
 ```sh
-# 7.b.11
+# 7.b.8
 ls -1 /var/lib/cassandra/data/lab/lancamento_sem_bucket-*/*-Data.db
 
 ```
@@ -1473,7 +1438,7 @@ ls -1 /var/lib/cassandra/data/lab/lancamento_sem_bucket-*/*-Data.db
 Duas, e você só pediu uma gravação: no meio do `COPY`, a memória reservada às escritas encheu e o Cassandra gravou parte dela por conta própria (a seção 9 mostra esse ciclo em detalhe). A mesma partição ficou em dois arquivos. Para medi-la inteira, junte os dois com uma compactação:
 
 ```sh
-# 7.b.12
+# 7.b.9
 nodetool compact lab lancamento_sem_bucket
 
 ```
@@ -1481,7 +1446,7 @@ nodetool compact lab lancamento_sem_bucket
 Agora compare as duas tabelas:
 
 ```sh
-# 7.b.13
+# 7.b.10
 nodetool tablestats lab.lancamento_sem_bucket
 
 ```
@@ -1493,7 +1458,7 @@ nodetool tablestats lab.lancamento_sem_bucket
 ```
 
 ```sh
-# 7.b.14
+# 7.b.11
 nodetool tablestats infobarbank.lancamentos_por_periodo
 
 ```
@@ -1516,7 +1481,7 @@ Uma partição de **10 MB**, contra 2,7 KB. E isso com 200 mil linhas de **uma**
 Aqui está a parte que costuma surpreender. Uma leitura pontual dentro da partição gigante continua rápida:
 
 ```sh
-# 7.b.15
+# 7.b.12
 cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-06-01' AND data_hora < '2020-06-08';"
 
 ```
@@ -1528,7 +1493,7 @@ cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162
 Responde em meio segundo. O índice da partição mais as clustering keys levam direto ao trecho pedido, e o tamanho da partição quase não pesa. Já atravessar a partição inteira custa:
 
 ```sh
-# 7.b.16
+# 7.b.13
 cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060';"
 
 ```
@@ -1540,7 +1505,7 @@ cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162
 Três vezes mais lento — e com 200 mil linhas isso ainda é tolerável. Agora que houve leituras, o `tablehistograms` mostra a distribuição das duas tabelas lado a lado:
 
 ```sh
-# 7.b.17
+# 7.b.14
 nodetool tablehistograms lab lancamento_sem_bucket
 
 ```
@@ -1553,7 +1518,7 @@ Percentile      Read Latency     Write Latency          SSTables    Partition Si
 ```
 
 ```sh
-# 7.b.18
+# 7.b.15
 nodetool tablehistograms infobarbank lancamentos_por_periodo
 
 ```
@@ -1578,8 +1543,8 @@ O bucket não é grátis, e o custo é na consulta. Com a competência na partit
 > **Provoque este erro.**
 
 ```sh
-# 7.b.19
-cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia >= '2026-04';"
+# 7.b.16
+cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia >= '$COMPETENCIA_ANTERIOR';"
 
 ```
 
@@ -1590,11 +1555,11 @@ InvalidRequest: ... "Cannot execute this query as it might involve data filterin
 Faz sentido, pelo que você viu na seção 4: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre abril e junho". A saída é listar os buckets desejados:
 
 ```sh
-# 7.b.20
+# 7.b.17
 cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
-WHERE id_cliente='2b162060' AND competencia IN ('2026-04','2026-05','2026-06')
+WHERE id_cliente='2b162060' AND competencia IN ('$COMPETENCIA_ANTERIOR','$COMPETENCIA')
 GROUP BY competencia;"
 
 ```
@@ -1602,7 +1567,6 @@ GROUP BY competencia;"
 ```
  competencia | count
 -------------+-------
-     2026-04 |    25
      2026-05 |    22
      2026-06 |    18
 ```
@@ -1610,12 +1574,12 @@ GROUP BY competencia;"
 E para um período que atravessa buckets, combina-se `IN` no bucket com o intervalo na clustering key:
 
 ```sh
-# 7.b.21
+# 7.b.18
 cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
-WHERE id_cliente='2b162060' AND competencia IN ('2026-05','2026-06')
-  AND data_hora >= '2026-05-20' AND data_hora < '2026-06-10'
+WHERE id_cliente='2b162060' AND competencia IN ('$COMPETENCIA_ANTERIOR','$COMPETENCIA')
+  AND data_hora >= '$COMPETENCIA_ANTERIOR-20' AND data_hora < '$COMPETENCIA-10'
 GROUP BY competencia;"
 
 ```
@@ -1630,7 +1594,7 @@ GROUP BY competencia;"
 Compare com a tabela sem bucket, onde o mesmo período é um intervalo só, sem que a aplicação precise saber de meses:
 
 ```sh
-# 7.b.22
+# 7.b.19
 cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-05-20' AND data_hora < '2020-06-10';"
 
 ```
@@ -1689,7 +1653,7 @@ O bucket resolve o tamanho da partição, mas cobra um preço na consulta: **que
 Sem bucket, quem limita o tamanho é a cardinalidade natural do par: um cliente não compra a mesma geladeira dez mil vezes. Confira:
 
 ```sh
-# 7.b.23
+# 7.b.20
 cqlsh -e "SELECT count(*) FROM infobarshop.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
 
 ```
@@ -1699,7 +1663,7 @@ Vinte e poucas linhas em doze competências — mesma ordem de grandeza das part
 Terminada a comparação, libere os 10 MB:
 
 ```sh
-# 7.b.24
+# 7.b.21
 cqlsh -e "DROP TABLE lab.lancamento_sem_bucket;"
 
 ```
@@ -1727,7 +1691,7 @@ Isso não é inconveniência do laboratório, é a própria mecânica do aplicat
 cqlsh -e "
 SELECT id_lancamento, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_periodo
-WHERE id_cliente='2b162060' AND competencia='2026-06'
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA'
 LIMIT 5;"
 
 ```
@@ -1792,7 +1756,7 @@ Todas as colunas de filtro estão na chave. Serve à Q4, porque `data_hora` é a
 # 7.d.2
 cqlsh -e "
 SELECT data_hora, status, valor FROM infobarbank.lancamentos_cartao_credito
-WHERE id_cliente='2b162060' AND competencia='2026-06' AND status='APROVADA';"
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND status='APROVADA';"
 
 ```
 
@@ -1818,7 +1782,7 @@ Q3 — últimos aprovados:
 cqlsh -e "
 SELECT status, data_hora, id_produto, estabelecimento, valor
 FROM infobarbank.lancamentos_por_status
-WHERE id_cliente='2b162060' AND competencia='2026-06' AND status='APROVADA'
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND status='APROVADA'
 LIMIT 5;"
 
 ```
@@ -1840,7 +1804,7 @@ Q5 — lançamentos de um cartão específico:
 cqlsh -e "
 SELECT id_produto, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_produto
-WHERE id_cliente='2b162060' AND competencia='2026-06' AND id_produto='897199aa';"
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND id_produto='897199aa';"
 
 ```
 
@@ -1863,7 +1827,7 @@ Q6 — por tipo de operação:
 cqlsh -e "
 SELECT tipo_operacao, data_hora, estabelecimento, valor
 FROM infobarbank.lancamentos_por_tipo
-WHERE id_cliente='2b162060' AND competencia='2026-06' AND tipo_operacao='DEBITO'
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND tipo_operacao='DEBITO'
 LIMIT 4;"
 
 ```
@@ -2014,7 +1978,7 @@ Mesma mensagem, outra causa. `status` ordena as linhas *dentro* da partição; s
 # 7.e.3
 cqlsh -e "
 SELECT * FROM infobarbank.lancamentos_por_produto
-WHERE id_cliente='2b162060' AND competencia='2026-06' AND data_hora>='2026-06-01';"
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND data_hora>='$COMPETENCIA-01';"
 
 ```
 
@@ -2033,7 +1997,7 @@ Esta é a mensagem mais informativa das quatro, e vale decorar o princípio: as 
 # 7.e.4
 cqlsh -e "
 SELECT * FROM infobarbank.lancamentos_por_periodo
-WHERE id_cliente='2b162060' AND competencia='2026-06'
+WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA'
 ORDER BY valor DESC;"
 
 ```
@@ -2053,7 +2017,7 @@ Primeiro a consulta correta, com a partition key completa:
 
 ```sh
 # 7.f.1
-cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='2026-06';"
+cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA';"
 
 ```
 
@@ -2068,7 +2032,7 @@ Read 26 live rows and 0 tombstone cells
 
 ```sh
 # 7.f.2
-cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE competencia='2026-06' ALLOW FILTERING;"
+cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo WHERE competencia='$COMPETENCIA' ALLOW FILTERING;"
 
 ```
 
@@ -2192,7 +2156,7 @@ Q7 · Detalhe do lançamento cc44552e
   autenticação b2c5db0d-ec3c-4a13-b116-a44e1ffd8e41
 ```
 
-Como na seção 7, os valores de Q1 e Q2 devem coincidir com os seus; os lançamentos de Q3 a Q7 são sorteados por ambiente.
+Os valores de Q1 e Q2 devem coincidir com os seus; os lançamentos de Q3 a Q7 são sorteados por ambiente.
 
 Você pode passar outra cliente e outra competência:
 
@@ -2204,7 +2168,7 @@ python3 driver_demo.py 2b16242a
 
 ```sh
 # 8.b.4
-python3 driver_demo.py 2b162060 2026-05
+python3 driver_demo.py 2b162060 $COMPETENCIA_ANTERIOR
 
 ```
 
@@ -3517,7 +3481,7 @@ Se o `DESCRIBE KEYSPACES` mostrar uma keyspace `ecommerce` no lugar de `infobars
 
 Confira nesta ordem:
 
-1. **Competência.** Os lançamentos e pedidos são gerados em relação à data em que você criou o ambiente. Use `SELECT DISTINCT` para descobrir as suas, e prefira uma competência fechada — a mais recente é o mês corrente.
+1. **Competência.** Os lançamentos são gerados em relação à data em que você criou o ambiente, e os comandos da seção 7 em diante usam a variável `$COMPETENCIA`. Confira com `echo $COMPETENCIA`; se estiver vazia (você abriu outro terminal), rode o 7.b.2 de novo.
 2. **Cliente.** No `infobarbank`, sete das cinquenta clientes têm conta, cartões e lançamentos: `2b162060`, `2b16242a`, `2b16256a`, `2b16353c`, `2b1636ae`, `2b16396a`, `2b163bcc`.
 3. **Valores que sempre variam.** `Host ID`, `Load`, UUID do diretório da tabela, timestamps, e o tamanho do `Data.db` em um ou dois bytes.
 4. **Numeração das SSTables.** Se você fez um flush a mais, seus arquivos não serão `nb-1` a `nb-4`. Use os nomes que o `ls` mostrar.
