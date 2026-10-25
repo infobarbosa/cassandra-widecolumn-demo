@@ -24,6 +24,7 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 | `09-metodologia` | 6 |
 | `10-modelo-conceitual` | 6 |
 | `11-telas-q1-q7` | 6 |
+| `07a-tela-conta` | 7 |
 | `12-bucket-competencia` | 7 |
 | `05-colunar-vs-widecolumn` | 9 |
 | `06-caminho-de-escrita` | 9 |
