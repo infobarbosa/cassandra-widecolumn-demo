@@ -89,7 +89,7 @@ def abre_sessao():
 
 
 def descobre_competencia(session, id_cliente):
-    """A penúltima competência com lançamentos desta cliente.
+    """A competência mais recente com lançamentos desta cliente (o mês atual).
 
     Note o `SELECT DISTINCT`. A tentativa óbvia —
 
@@ -110,7 +110,7 @@ def descobre_competencia(session, id_cliente):
     competencias = sorted({l.competencia for l in linhas if l.id_cliente == id_cliente})
     if not competencias:
         raise SystemExit(f"Cliente {id_cliente} não tem lançamentos.")
-    return competencias[-2] if len(competencias) > 1 else competencias[0]
+    return competencias[-1]
 
 
 def titulo(texto):
@@ -156,13 +156,13 @@ def main():
             print(f"  {lanc.data_hora:%d/%m %H:%M}  {lanc.id_produto}  "
                   f"{lanc.estabelecimento:<20} {moeda(lanc.valor)}")
 
-        titulo("Q4 · Extrato por período (dias 19 a 27)")
-        # O cqlsh aceita '2026-06-19' como literal de timestamp; o driver não.
+        titulo("Q4 · Extrato por período (dias 1 a 14)")
+        # O cqlsh aceita '2026-10-01' como literal de timestamp; o driver não.
         # Parâmetro de prepared statement é tipado, e o tipo é verificado no
         # cliente antes de a consulta sair da máquina.
         ano, mes = (int(parte) for parte in competencia.split("-"))
-        inicio = datetime(ano, mes, 19)
-        fim = datetime(ano, mes, 28)
+        inicio = datetime(ano, mes, 1)
+        fim = datetime(ano, mes, 15)
         for lanc in session.execute(stmt["Q4"], [id_cliente, competencia, inicio, fim]):
             print(f"  {lanc.data_hora:%d/%m %H:%M}  {lanc.tipo_operacao:<8} "
                   f"{lanc.estabelecimento:<20} {moeda(lanc.valor)}")
