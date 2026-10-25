@@ -1350,15 +1350,21 @@ WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA'
 ```
 
 ```
- data_hora                       | id_produto | tipo_operacao | estabelecimento    | valor
----------------------------------+------------+---------------+--------------------+-----------
- 2026-06-27 17:46:39.942000+0000 |   2b162060 |        DEBITO |  Posto de gasolina | 708.40997
- 2026-06-27 17:46:39.770000+0000 |   897199aa |        DEBITO |    Salão de beleza | 835.98999
- 2026-06-25 17:46:42.420000+0000 |   2b162060 |        DEBITO |    Salão de beleza |       936
- 2026-06-21 17:46:39.620000+0000 |   2b162060 |        DEBITO | Loja de brinquedos | 727.70001
- 2026-06-19 17:46:39.360000+0000 |   2b162060 |        DEBITO |    Salão de beleza |    654.87
+ data_hora                       | id_produto | tipo_operacao | estabelecimento     | valor
+---------------------------------+------------+---------------+---------------------+-----------
+ 2026-10-12 21:29:11.581000+0000 |   007c2c1c |        DEBITO |   Posto de gasolina | 617.23999
+ 2026-10-12 21:29:07.310000+0000 |   007c2c1c |        DEBITO |  Loja de brinquedos | 648.83002
+ 2026-10-09 21:29:10.751000+0000 |   897199aa |        DEBITO |         Restaurante | 816.15997
+ 2026-10-08 21:29:10.317000+0000 |   007c2c1c |        DEBITO |        Supermercado | 924.51001
+ 2026-10-06 21:29:08.913000+0000 |   2b162060 |        DEBITO | Loja de eletrônicos |    209.87
+ 2026-10-04 21:29:11.060000+0000 |   897199aa |        DEBITO |        Supermercado | 624.67999
+ 2026-10-02 21:29:11.428000+0000 |   2b162060 |        DEBITO |         Restaurante |     11.05
+ 2026-10-02 21:29:09.198000+0000 |   007c2c1c |        DEBITO |        Supermercado | 970.14001
+ 2026-10-01 21:29:10.827000+0000 |   007c2c1c |        DEBITO |   Posto de gasolina |    106.51
+ 2026-10-01 21:29:10.594000+0000 |   2b162060 |        DEBITO |      Loja de móveis |    453.28
+ 2026-10-01 21:29:09.594000+0000 |   897199aa |        DEBITO |            Farmácia |    104.86
 
-(5 rows)
+(11 rows)
 ```
 
 Duas coisas nesse resultado.
@@ -1565,8 +1571,10 @@ GROUP BY competencia;"
 ```
  competencia | count
 -------------+-------
-     2026-05 |    22
-     2026-06 |    18
+     2026-09 |    23
+     2026-10 |    21
+
+(2 rows)
 ```
 
 E para um período que atravessa buckets, combina-se `IN` no bucket com o intervalo na clustering key:
@@ -1585,8 +1593,10 @@ GROUP BY competencia;"
 ```
  competencia | count
 -------------+-------
-     2026-05 |     4
-     2026-06 |     4
+     2026-09 |     9
+     2026-10 |     9
+
+(2 rows)
 ```
 
 Compare com a tabela sem bucket, onde o mesmo período é um intervalo só, sem que a aplicação precise saber de meses:
@@ -1697,11 +1707,13 @@ LIMIT 5;"
 ```
  id_lancamento | data_hora                       | estabelecimento     | valor
 ---------------+---------------------------------+---------------------+-----------
-      ccf7c105 | 2026-06-27 19:41:51.601000+0000 |   Posto de gasolina |    957.63
-      7bf5dcc8 | 2026-06-20 19:41:49.440000+0000 |             Padaria |    471.91
-      a9f23932 | 2026-06-18 19:41:50.544000+0000 | Loja de eletrônicos | 297.51999
-      6685149f | 2026-06-17 19:41:52.338000+0000 |     Salão de beleza |    150.47
-      7133781c | 2026-06-17 19:41:52.081000+0000 |      Loja de roupas |     159.3
+      13327cf1 | 2026-10-25 21:29:11.543000+0000 |      Loja de móveis | 401.42001
+      4c0feb38 | 2026-10-24 21:29:09.614000+0000 | Loja de eletrônicos | 836.90997
+      7b75a846 | 2026-10-24 21:29:09.107000+0000 |     Salão de beleza |    639.19
+      f658c50c | 2026-10-24 21:29:07.750000+0000 |   Posto de gasolina | 473.20999
+      0192dcf3 | 2026-10-21 21:29:09.561000+0000 |         Restaurante |     53.55
+
+(5 rows)
 ```
 
 Os seus cinco ids são outros. **Escolha qualquer um deles** e siga com ele nos comandos abaixo.
@@ -1715,14 +1727,14 @@ Agora a Q7, com o id que você escolheu:
 cqlsh -e "
 SELECT id_lancamento, data_hora, estabelecimento, valor, status, codigo_autenticacao
 FROM infobarbank.lancamentos_detalhe
-WHERE id_lancamento='ccf7c105';"
+WHERE id_lancamento='13327cf1';"
 
 ```
 
 ```
- id_lancamento | data_hora                       | estabelecimento   | valor  | status   | codigo_autenticacao
----------------+---------------------------------+-------------------+--------+----------+--------------------------------------
-      ccf7c105 | 2026-06-27 19:41:51.601000+0000 | Posto de gasolina | 957.63 | APROVADA | 74769828-a8a8-4244-b9c6-506a4adc758a
+ id_lancamento | data_hora                       | estabelecimento | valor     | status   | codigo_autenticacao
+---------------+---------------------------------+-----------------+-----------+----------+--------------------------------------
+      13327cf1 | 2026-10-25 21:29:11.543000+0000 |  Loja de móveis | 401.42001 | APROVADA | c3fb61e7-7de4-4336-997a-337060cca668
 ```
 
 Confira contra a listagem anterior: mesmo estabelecimento, mesma data, mesmo valor. **É o mesmo lançamento, gravado em duas tabelas** — a listagem numa, o detalhe na outra. A tela de extrato e a tela de detalhe são duas consultas, então são duas tabelas. Esse padrão tem nome, e a 7.d volta a ele.
@@ -1786,13 +1798,15 @@ LIMIT 5;"
 ```
 
 ```
- status   | data_hora                       | id_produto | estabelecimento    | valor
-----------+---------------------------------+------------+--------------------+-----------
- APROVADA | 2026-06-27 17:46:39.942000+0000 |   2b162060 |  Posto de gasolina | 708.40997
- APROVADA | 2026-06-27 17:46:39.770000+0000 |   897199aa |    Salão de beleza | 835.98999
- APROVADA | 2026-06-25 17:46:42.420000+0000 |   2b162060 |    Salão de beleza |       936
- APROVADA | 2026-06-21 17:46:39.620000+0000 |   2b162060 | Loja de brinquedos | 727.70001
- APROVADA | 2026-06-19 17:46:39.360000+0000 |   2b162060 |    Salão de beleza |    654.87
+ status   | data_hora                       | id_produto | estabelecimento     | valor
+----------+---------------------------------+------------+---------------------+-----------
+ APROVADA | 2026-10-25 21:29:11.543000+0000 |   897199aa |      Loja de móveis | 401.42001
+ APROVADA | 2026-10-24 21:29:09.614000+0000 |   897199aa | Loja de eletrônicos | 836.90997
+ APROVADA | 2026-10-24 21:29:09.107000+0000 |   007c2c1c |     Salão de beleza |    639.19
+ APROVADA | 2026-10-24 21:29:07.750000+0000 |   2b162060 |   Posto de gasolina | 473.20999
+ APROVADA | 2026-10-21 21:29:08.158000+0000 |   897199aa |   Posto de gasolina | 584.08002
+
+(5 rows)
 ```
 
 Q5 — lançamentos de um cartão específico:
@@ -1807,13 +1821,18 @@ WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND id_produto='89719
 ```
 
 ```
- id_produto | data_hora                       | estabelecimento    | valor
-------------+---------------------------------+--------------------+-----------
-   897199aa | 2026-06-27 17:46:39.770000+0000 |    Salão de beleza | 835.98999
-   897199aa | 2026-06-11 17:46:42.373000+0000 |       Supermercado | 529.60999
-   897199aa | 2026-06-09 17:46:42.640000+0000 | Loja de brinquedos | 302.48001
-   897199aa | 2026-06-08 17:46:40.793000+0000 |        Restaurante | 817.54999
-   897199aa | 2026-06-01 17:46:42.085000+0000 |        Restaurante | 615.17999
+ id_produto | data_hora                       | estabelecimento     | valor
+------------+---------------------------------+---------------------+-----------
+   897199aa | 2026-10-25 21:29:11.543000+0000 |      Loja de móveis | 401.42001
+   897199aa | 2026-10-24 21:29:09.614000+0000 | Loja de eletrônicos | 836.90997
+   897199aa | 2026-10-21 21:29:08.158000+0000 |   Posto de gasolina | 584.08002
+   897199aa | 2026-10-17 21:29:10.305000+0000 |         Restaurante | 657.15997
+   897199aa | 2026-10-16 21:29:10.527000+0000 |            Farmácia | 832.71997
+   897199aa | 2026-10-09 21:29:10.751000+0000 |         Restaurante | 816.15997
+   897199aa | 2026-10-04 21:29:11.060000+0000 |        Supermercado | 624.67999
+   897199aa | 2026-10-01 21:29:09.594000+0000 |            Farmácia |    104.86
+
+(8 rows)
 ```
 
 `id_produto` é a conta ou o cartão que originou o lançamento — `897199aa` é um dos cartões que a Q2 listou.
@@ -1831,12 +1850,14 @@ LIMIT 4;"
 ```
 
 ```
- tipo_operacao | data_hora                       | estabelecimento    | valor
----------------+---------------------------------+--------------------+-----------
-        DEBITO | 2026-06-27 17:46:39.942000+0000 |  Posto de gasolina | 708.40997
-        DEBITO | 2026-06-27 17:46:39.770000+0000 |    Salão de beleza | 835.98999
-        DEBITO | 2026-06-25 17:46:42.420000+0000 |    Salão de beleza |       936
-        DEBITO | 2026-06-21 17:46:39.620000+0000 | Loja de brinquedos | 727.70001
+ tipo_operacao | data_hora                       | estabelecimento     | valor
+---------------+---------------------------------+---------------------+-----------
+        DEBITO | 2026-10-25 21:29:11.543000+0000 |      Loja de móveis | 401.42001
+        DEBITO | 2026-10-24 21:29:09.614000+0000 | Loja de eletrônicos | 836.90997
+        DEBITO | 2026-10-24 21:29:09.107000+0000 |     Salão de beleza |    639.19
+        DEBITO | 2026-10-24 21:29:07.750000+0000 |   Posto de gasolina | 473.20999
+
+(4 rows)
 ```
 
 `tipo_operacao` é a **direção contábil** do lançamento: `DEBITO` é saída de dinheiro, `CREDITO` é entrada — salário caindo na conta, estorno no cartão. Num extrato, entradas são naturalmente raras, então uma consulta filtrando `CREDITO` pode devolver poucas linhas ou nenhuma. Não é erro seu.
@@ -2023,10 +2044,10 @@ Nas linhas do rastro, duas importam:
 
 ```
 Executing single-partition query on lancamentos_por_periodo
-Read 26 live rows and 0 tombstone cells
+Read 21 live rows and 0 tombstone cells
 ```
 
-**Uma partição, 26 linhas lidas.** Agora a mesma pergunta, sem informar a cliente, forçando o filtro:
+**Uma partição, 21 linhas lidas.** Agora a mesma pergunta, sem informar a cliente, forçando o filtro:
 
 ```sh
 # 7.f.2
@@ -2036,12 +2057,12 @@ cqlsh -e "TRACING ON; SELECT count(*) FROM infobarbank.lancamentos_por_periodo W
 
 ```
 Computing ranges to query
-Submitting range requests on 17 ranges with a concurrency of 1 (172.8 rows per range expected)
+Submitting range requests on 17 ranges with a concurrency of 1 (169.92 rows per range expected)
 Executing seq scan across 1 sstables for (min(-9223372036854775808), min(-9223372036854775808)]
-Read 171 live rows and 0 tombstone cells
+Read 153 live rows and 0 tombstone cells
 ```
 
-Não é mais uma consulta a uma partição: é uma **varredura sequencial** de todo o ring de tokens, de -2⁶³ a 2⁶³-1, para depois descartar o que não bate. Leu 171 linhas para devolver as que interessavam.
+Não é mais uma consulta a uma partição: é uma **varredura sequencial** de todo o ring de tokens, de -2⁶³ a 2⁶³-1, para depois descartar o que não bate. Leu 153 linhas para devolver as que interessavam.
 
 O relógio não vai te avisar: esta tabela tem mil linhas, e as duas consultas respondem instantaneamente. É por isso que o Cassandra recusa por padrão em vez de deixar você descobrir — a consulta que varre mil linhas em desenvolvimento varre mil vezes mais em produção, e nesse dia ela não é lenta, ela é uma varredura em todos os nós do cluster ao mesmo tempo.
 
@@ -2127,7 +2148,7 @@ python3 driver_demo.py
 ```
 
 ```
-Cliente 2b162060 — MARIVALDA KANAMARY — competência 2026-06
+Cliente 2b162060 — MARIVALDA KANAMARY — competência 2026-10
 
 Q1 · Dados da conta
   conta 2b162060  ATIVA    apelido MARIVALDA    saldo R$     100,00
@@ -2138,20 +2159,47 @@ Q2 · Cartões de crédito
   9a748c3c  INATIVO  5188 2716 2053 8850  limite R$     500,00  disponível R$     100,00
 
 Q3 · Últimos lançamentos aprovados
-  27/06 17:46  2b162060  Posto de gasolina    R$     708,41
-  27/06 17:46  897199aa  Salão de beleza      R$     835,99
-  25/06 17:46  2b162060  Salão de beleza      R$     936,00
-  21/06 17:46  2b162060  Loja de brinquedos   R$     727,70
-  19/06 17:46  2b162060  Salão de beleza      R$     654,87
+  25/10 21:29  897199aa  Loja de móveis       R$     401,42
+  24/10 21:29  897199aa  Loja de eletrônicos  R$     836,91
+  24/10 21:29  007c2c1c  Salão de beleza      R$     639,19
+  24/10 21:29  2b162060  Posto de gasolina    R$     473,21
+  21/10 21:29  897199aa  Posto de gasolina    R$     584,08
 
-Q4 · Extrato por período (dias 19 a 27)
-  27/06 17:46  DEBITO   Posto de gasolina    R$     708,41
-  [...]
+Q4 · Extrato por período (dias 1 a 14)
+  12/10 21:29  DEBITO   Posto de gasolina    R$     617,24
+  12/10 21:29  DEBITO   Loja de brinquedos   R$     648,83
+  09/10 21:29  DEBITO   Restaurante          R$     816,16
+  08/10 21:29  DEBITO   Supermercado         R$     924,51
+  06/10 21:29  DEBITO   Loja de eletrônicos  R$     209,87
+  04/10 21:29  DEBITO   Supermercado         R$     624,68
+  02/10 21:29  DEBITO   Restaurante          R$      11,05
+  02/10 21:29  DEBITO   Supermercado         R$     970,14
+  01/10 21:29  DEBITO   Posto de gasolina    R$     106,51
+  01/10 21:29  DEBITO   Loja de móveis       R$     453,28
+  01/10 21:29  DEBITO   Farmácia             R$     104,86
 
-Q7 · Detalhe do lançamento cc44552e
-  27/06/2026 17:46  Posto de gasolina
-  R$     708,41  APROVADA
-  autenticação b2c5db0d-ec3c-4a13-b116-a44e1ffd8e41
+Q5 · Lançamentos do cartão 007c2c1c
+  24/10 21:29  Salão de beleza      R$     639,19
+  21/10 21:29  Restaurante          R$      53,55
+  17/10 21:29  Posto de gasolina    R$     934,79
+  12/10 21:29  Posto de gasolina    R$     617,24
+  12/10 21:29  Loja de brinquedos   R$     648,83
+  08/10 21:29  Supermercado         R$     924,51
+  02/10 21:29  Supermercado         R$     970,14
+  01/10 21:29  Posto de gasolina    R$     106,51
+
+Q6 · Lançamentos de saída (débito)
+  25/10 21:29  Loja de móveis       R$     401,42
+  24/10 21:29  Loja de eletrônicos  R$     836,91
+  24/10 21:29  Salão de beleza      R$     639,19
+  24/10 21:29  Posto de gasolina    R$     473,21
+  21/10 21:29  Restaurante          R$      53,55
+  (21 no total)
+
+Q7 · Detalhe do lançamento 13327cf1
+  25/10/2026 21:29  Loja de móveis
+  R$     401,42  APROVADA
+  autenticação c3fb61e7-7de4-4336-997a-337060cca668
 ```
 
 Os valores de Q1 e Q2 devem coincidir com os seus; os lançamentos de Q3 a Q7 são sorteados por ambiente.
@@ -2230,7 +2278,7 @@ inicio = datetime(ano, mes, 19)
 fim = datetime(ano, mes, 28)
 ```
 
-No `cqlsh`, `data_hora >= '2026-06-19'` funciona: ele converte o literal. No driver, um parâmetro de prepared statement é tipado e verificado **no cliente**, antes de a consulta sair da máquina. Passar a string devolve:
+No `cqlsh`, `data_hora >= '2026-10-01'` funciona: ele converte o literal. No driver, um parâmetro de prepared statement é tipado e verificado **no cliente**, antes de a consulta sair da máquina. Passar a string devolve:
 
 ```
 TypeError: DateType arguments must be a datetime, date, or timestamp
