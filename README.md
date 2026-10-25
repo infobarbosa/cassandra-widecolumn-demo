@@ -809,13 +809,13 @@ Em `lab.cliente`, cada partição tem exatamente uma linha, porque a `PRIMARY KE
 
 O outro extremo — uma partição que cresce sem limite — é um problema de verdade, e existe uma técnica para controlá-lo. Ela tem seção própria: 8.f.
 
-O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 5 — e, na Parte 2, o centro de toda a modelagem. Antes disso, vale organizar quem é quem numa chave. Saia do banco por um instante e pense numa tabela de pedidos guardada como as pastas de um data lake, uma pasta por dia:
+O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 5 — e, na Parte 2, o centro de toda a modelagem. Antes disso, vale organizar quem é quem numa chave. Saia do banco por um instante e pense numa tabela com as transações do banco, guardada como as pastas de um data lake, uma pasta por dia:
 
-![Exemplo, uma abstração do conceito de partição: a tabela imaginária pedidos_por_dia, com PRIMARY KEY (dia, hora, id_pedido), desenhada como três pastas de data lake, uma por dia: uma linha destacada é a primary key (corte horizontal), uma pasta inteira é a partição (corte vertical) e uma seta mostra a ordem das linhas dentro da pasta (clustering key)](diagramas/04b-quem-e-quem.svg)
+![Exemplo, uma abstração do conceito de partição: a tabela imaginária transacoes_por_dia, com PRIMARY KEY (dia, hora, id_transacao), desenhada como três pastas de data lake, uma por dia: uma linha destacada é a primary key (corte horizontal), uma pasta inteira é a partição (corte vertical) e uma seta mostra a ordem das linhas dentro da pasta (clustering key)](diagramas/04b-quem-e-quem.svg)
 
 | | Corte | Papel |
 |---|---|---|
-| **primary key** | horizontal | identifica uma linha, e só uma: é a chave inteira, `dia + hora + id_pedido` |
+| **primary key** | horizontal | identifica uma linha, e só uma: é a chave inteira, `dia + hora + id_transacao` |
 | **partition key** | vertical | agrupa as linhas que moram juntas — e, num cluster, decide em qual nó. A regra: **armazene junto o que você quer recuperar junto** |
 | **clustering key** | — | decide **em que ordem** as linhas ficam dentro da partição |
 
