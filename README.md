@@ -1295,7 +1295,7 @@ No modelo lógico do início desta seção, as tabelas de lançamento têm só `
 
 O problema é que a partição de cada cliente passa a **crescer para sempre**. Uma partição não se divide entre nós: o cluster escala em **número** de partições, não em tamanho delas. Dez anos de extrato de um cliente ativo viram uma única partição, num único nó.
 
-A saída é uma decisão de **modelo físico**, a última etapa da metodologia da seção 6 (*que bucket?*): acrescentar à partition key uma coluna cuja única função é **limitar quantas linhas caem em cada partição** — quase sempre derivada do tempo. A técnica tem nome: **bucketing**. No infobarBank, a coluna é a **competência**, o mês do lançamento: cada cliente passa a ter uma partição por mês.
+A saída é uma decisão de **modelo físico**, a última etapa da metodologia da seção 6: acrescentar à partition key uma coluna cuja única função é **limitar quantas linhas caem em cada partição** — quase sempre derivada do tempo. A técnica tem nome: **bucketing**. No infobarBank, a coluna é a **competência**, o mês do lançamento: cada cliente passa a ter uma partição por mês.
 
 ![Sem bucket, uma partição da Marivalda com dez anos de lançamentos, 10 MB e crescendo; com bucket por competência, uma partição pequena por mês](diagramas/12-bucket-competencia.svg)
 
