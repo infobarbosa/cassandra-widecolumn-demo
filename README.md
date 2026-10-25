@@ -1460,55 +1460,72 @@ nodetool tablestats lab.lancamento_sem_bucket
   Compacted partition mean bytes: 10090808
 ```
 
+A tabela do banco foi carregada no primeiro boot, e parte dela pode ainda estar só na memória. Faça com ela o mesmo que você fez com a sua — grave em disco e junte os arquivos — antes de medir:
+
 ```sh
 # 7.b.11
+nodetool flush infobarbank lancamentos_por_periodo
+nodetool compact infobarbank lancamentos_por_periodo
+
+```
+
+```sh
+# 7.b.12
 nodetool tablestats infobarbank.lancamentos_por_periodo
 
 ```
 
 ```
-  Number of partitions (estimate): 91
+  Number of partitions (estimate): 90
   Compacted partition maximum bytes: 2759
-  Compacted partition mean bytes: 934
+  Compacted partition mean bytes: 930
 ```
 
 | | partições | maior partição |
 |---|---|---|
 | sem bucket | 1 | 10.090.808 bytes |
-| com bucket | 91 | 2.759 bytes |
+| com bucket | 90 | 2.759 bytes |
 
 Uma partição de **10 MB**, contra 2,7 KB. E isso com 200 mil linhas de **uma** cliente.
 
 #### Onde o problema realmente aparece
 
-Aqui está a parte que costuma surpreender. Uma leitura pontual dentro da partição gigante continua rápida:
-
-```sh
-# 7.b.12
-cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-06-01' AND data_hora < '2020-06-08';"
-
-```
-
-```
-   384
-```
-
-Responde em meio segundo. O índice da partição mais as clustering keys levam direto ao trecho pedido, e o tamanho da partição quase não pesa. Já atravessar a partição inteira custa:
+Aqui está a parte que costuma surpreender. Para comparar tempos, não confie no relógio do terminal: só a partida do `cqlsh` leva mais que a consulta. Peça o tempo ao próprio Cassandra, com `TRACING ON`, e guarde só a última linha do rastro. Primeiro, uma semana dentro da partição gigante:
 
 ```sh
 # 7.b.13
-cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060';"
+cqlsh -e "TRACING ON; SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-06-01' AND data_hora < '2020-06-08';" \
+  | grep -E "^ +[0-9]+ *$|Request complete"
+
+```
+
+```
+    384
+ Request complete | 2026-10-25 21:49:01.580842 | 127.0.0.1 | 4842 | 127.0.0.1
+```
+
+O quarto campo da linha `Request complete` é o tempo da requisição medido no servidor, em microssegundos: **menos de 5 ms**. O índice da partição mais as clustering keys levam direto ao trecho pedido, e o tamanho da partição quase não pesa. Agora a partição inteira:
+
+```sh
+# 7.b.14
+cqlsh -e "TRACING ON; SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060';" \
+  | grep -E "^ +[0-9]+ *$|Request complete"
 
 ```
 
 ```
  200000
+ Request complete | 2026-10-25 21:49:03.165491 | 127.0.0.1 | 1045491 | 127.0.0.1
 ```
 
-Três vezes mais lento — e com 200 mil linhas isso ainda é tolerável. Agora que houve leituras, o `tablehistograms` mostra a distribuição das duas tabelas lado a lado:
+**Cerca de 1 segundo — mais de 200 vezes mais lento**, e com 200 mil linhas isso ainda é tolerável.
+
+> Os seus números serão outros, e a primeira execução de cada consulta costuma ser mais lenta, porque os dados ainda não estão em cache. Rode cada uma duas vezes e compare a ordem de grandeza.
+
+Agora que houve leituras, o `tablehistograms` mostra a distribuição das duas tabelas lado a lado:
 
 ```sh
-# 7.b.14
+# 7.b.15
 nodetool tablehistograms lab lancamento_sem_bucket
 
 ```
@@ -1521,7 +1538,7 @@ Percentile      Read Latency     Write Latency          SSTables    Partition Si
 ```
 
 ```sh
-# 7.b.15
+# 7.b.16
 nodetool tablehistograms infobarbank lancamentos_por_periodo
 
 ```
@@ -1546,7 +1563,7 @@ O bucket não é grátis, e o custo é na consulta. Com a competência na partit
 > **Provoque este erro.**
 
 ```sh
-# 7.b.16
+# 7.b.17
 cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo WHERE id_cliente='2b162060' AND competencia <= '$COMPETENCIA';"
 
 ```
@@ -1558,7 +1575,7 @@ InvalidRequest: ... "Cannot execute this query as it might involve data filterin
 Faz sentido, pelo que você viu na seção 4: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre agosto e outubro". A saída é listar os buckets desejados — aqui, o mês anterior e o atual:
 
 ```sh
-# 7.b.17
+# 7.b.18
 COMPETENCIA_ANTERIOR=$(date -d "$COMPETENCIA-01 -1 month" +%Y-%m)
 cqlsh -e "
 SELECT competencia, count(*)
@@ -1580,7 +1597,7 @@ GROUP BY competencia;"
 E para um período que atravessa buckets, combina-se `IN` no bucket com o intervalo na clustering key:
 
 ```sh
-# 7.b.18
+# 7.b.19
 cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
@@ -1602,7 +1619,7 @@ GROUP BY competencia;"
 Compare com a tabela sem bucket, onde o mesmo período é um intervalo só, sem que a aplicação precise saber de meses:
 
 ```sh
-# 7.b.19
+# 7.b.20
 cqlsh -e "SELECT count(*) FROM lab.lancamento_sem_bucket WHERE id_cliente='2b162060' AND data_hora >= '2020-05-20' AND data_hora < '2020-06-10';"
 
 ```
@@ -1661,7 +1678,7 @@ O bucket resolve o tamanho da partição, mas cobra um preço na consulta: **que
 Sem bucket, quem limita o tamanho é a cardinalidade natural do par: um cliente não compra a mesma geladeira dez mil vezes. Confira:
 
 ```sh
-# 7.b.20
+# 7.b.21
 cqlsh -e "SELECT count(*) FROM infobarshop.pedidos_por_produto WHERE id_cliente='CLI-000001' AND produto='TABLET';"
 
 ```
@@ -1671,7 +1688,7 @@ Vinte e poucas linhas em doze competências — mesma ordem de grandeza das part
 Terminada a comparação, libere os 10 MB:
 
 ```sh
-# 7.b.21
+# 7.b.22
 cqlsh -e "DROP TABLE lab.lancamento_sem_bucket;"
 
 ```
