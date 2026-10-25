@@ -823,6 +823,16 @@ O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 5 — e, na Part
 | **partition key** | vertical | agrupa as linhas que moram juntas — e, num cluster, decide em qual nó. A regra: **armazene junto o que você quer recuperar junto** |
 | **clustering key** | — | decide **em que ordem** as linhas ficam dentro da partição |
 
+O exemplo é de data lake. No Cassandra, a partição segue o mesmo conceito, mas não a mesma lógica:
+
+| | Cassandra | Data lake |
+|---|---|---|
+| O que "junto" significa | o mesmo nó do ring, e as linhas em ordem dentro da partição | o mesmo prefixo de pasta no object storage |
+| Granularidade | **fina**: milhões de partições pequenas (`id_cliente`) | **grossa**: poucas partições grandes (`dia`, `mês`) |
+| O que quebra | a partição que cresce sem limite (seção 8.f) | milhares de arquivos minúsculos (*small files*) |
+
+Nos dois casos a partição existe pelo mesmo motivo: a consulta lê só o que precisa. O que muda é o que "junto" significa — o mesmo nó, no Cassandra; a mesma pasta, no data lake.
+
 Na `lab.cliente`, os três papéis se confundem: a chave tem uma coluna só, que é ao mesmo tempo primary key e partition key, e não existe clustering key. Na seção 5 eles se separam.
 
 **→ Próxima seção.** Até aqui cada partição de `lab.cliente` teve uma linha só — a forma mais simples, e a menos "wide" que existe. Na próxima seção uma partição vai ganhar várias linhas.
