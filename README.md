@@ -740,14 +740,36 @@ Toda tabela no Cassandra tem uma **chave primária** (`PRIMARY KEY`), e em `lab.
 
 ## 4. A chave vira endereço: partição e token
 
-### 4.a. O token
+### 4.a. O que é partição
 
-Toda linha que você grava vai para uma **partição**, e a partição é escolhida aplicando uma função de hash sobre a partition key. Em `lab.cliente`, a partition key é `id_cliente` — a única coluna da `PRIMARY KEY`.
+Antes de ver como o Cassandra decide onde cada linha mora, o conceito por trás de tudo.
+
+<p align="center"><img src="diagramas/04a-armazene-junto.svg" width="720" alt="Em qualquer sistema de armazenamento, partição é a resposta à regra: armazene junto o que você quer recuperar junto"></p>
+
+> **Exemplo hipotético: partições num data lake.** Imagine as transações do infobarBank guardadas num **data lake**, como pastas, uma por dia. Essa tabela não existe no laboratório: é só uma forma de enxergar o que é uma partição.
+
+![Exemplo hipotético, partições num data lake: a tabela imaginária transacoes_por_dia desenhada como três pastas, uma por dia; a pasta do dia 2026-06-02 está destacada: uma partição são as transações do mesmo dia, guardadas juntas; quem quer as transações de um dia lê uma pasta só](diagramas/04c-particoes-data-lake.svg)
+
+O exemplo é de data lake. No Cassandra, a partição segue o mesmo conceito, mas não a mesma lógica:
+
+| | Cassandra | Data lake |
+|---|---|---|
+| O que "junto" significa | o mesmo nó do ring | o mesmo prefixo de pasta no object storage |
+| Granularidade | **fina**: milhões de partições pequenas (`id_cliente`) | **grossa**: poucas partições grandes (`dia`, `mês`) |
+| O que quebra | a partição que cresce sem limite (seção 8.f) | milhares de arquivos minúsculos (*small files*) |
+
+Nos dois casos a partição existe pelo mesmo motivo: a consulta lê só o que precisa. O que muda é o que "junto" significa — o mesmo nó, no Cassandra; a mesma pasta, no data lake.
+
+No Cassandra, a coluna que decide em qual partição a linha mora se chama **partition key**. Na `lab.cliente`, é o `id_cliente`, a única coluna da `PRIMARY KEY`.
+
+### 4.b. O token
+
+O Cassandra escolhe a partição de cada linha aplicando uma função de hash sobre a partition key — na `lab.cliente`, o `id_cliente`.
 
 O resultado dessa função é um número chamado **token**, e ele dá para consultar:
 
 ```sh
-# 4.a.1
+# 4.b.1
 cqlsh -e "SELECT id_cliente, token(id_cliente), nome FROM lab.cliente;"
 
 ```
@@ -771,10 +793,10 @@ O token é um inteiro de 64 bits, produzido pelo particionador `Murmur3Partition
 
 No desenho os tokens são números pequenos, para caber no olho. No seu nó, o token da Marivalda é `-754340186604780055` — o princípio é o mesmo, só a escala muda.
 
-### 4.b. O ring deste nó
+### 4.c. O ring deste nó
 
 ```sh
-# 4.b.1
+# 4.c.1
 nodetool ring
 
 ```
@@ -803,17 +825,9 @@ Agora localize a Marivalda. O token dela é `-754340186604780055`, e no trecho a
 
 Com um nó, todas as faixas são dele — daí `Owns 100.00%`. Com dois nós, cada um ficaria com aproximadamente metade das faixas, e cada partição passaria a ter um endereço não só no disco, mas na rede. Esse é o assunto do laboratório de cluster.
 
-### 4.c. Partição e linha não são a mesma coisa
+### 4.d. Quem é quem numa chave
 
-Em `lab.cliente`, cada partição tem exatamente uma linha, porque a `PRIMARY KEY` tem só a partition key. É o caso mais simples que existe, e também o menos interessante: uma partição de uma linha só não aproveita nada do que o Cassandra sabe fazer.
-
-O outro extremo — uma partição que cresce sem limite — é um problema de verdade, e existe uma técnica para controlá-lo. Ela tem seção própria: 8.f.
-
-O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 5 — e, na Parte 2, o centro de toda a modelagem. Antes disso, vale organizar quem é quem numa chave, com a ajuda de um exemplo de fora do Cassandra.
-
-<p align="center"><img src="diagramas/04a-armazene-junto.svg" width="720" alt="Em qualquer sistema de armazenamento, partição é a resposta à regra: armazene junto o que você quer recuperar junto"></p>
-
-> **Exemplo hipotético: partições num data lake.** Imagine as transações do infobarBank guardadas num **data lake**, como pastas, uma por dia. Essa tabela não existe no laboratório: é só uma forma de enxergar o que é uma partição.
+Volte às pastas da 4.a. A `PRIMARY KEY` dessa tabela imaginária tem três colunas, e cada uma tem um papel diferente:
 
 ![Exemplo hipotético, partições num data lake: a tabela imaginária transacoes_por_dia, com PRIMARY KEY (dia, hora, id_transacao), desenhada como três pastas de data lake, uma por dia: uma linha destacada é a primary key (corte horizontal), uma pasta inteira é a partição (corte vertical) e uma seta mostra a ordem das linhas dentro da pasta (clustering key)](diagramas/04b-quem-e-quem.svg)
 
@@ -823,17 +837,9 @@ O que muda quando a `PRIMARY KEY` tem mais colunas é a seção 5 — e, na Part
 | **partition key** | vertical | agrupa as linhas que moram juntas — e, num cluster, decide em qual nó. A regra: **armazene junto o que você quer recuperar junto** |
 | **clustering key** | — | decide **em que ordem** as linhas ficam dentro da partição |
 
-O exemplo é de data lake. No Cassandra, a partição segue o mesmo conceito, mas não a mesma lógica:
+Na `lab.cliente`, os três papéis se confundem: a chave tem uma coluna só, que é ao mesmo tempo primary key e partition key, e não existe clustering key. Por isso cada partição tem exatamente uma linha: o caso mais simples que existe, e também o menos interessante, porque uma partição de uma linha só não aproveita nada do que o Cassandra sabe fazer. Na seção 5 os três papéis se separam.
 
-| | Cassandra | Data lake |
-|---|---|---|
-| O que "junto" significa | o mesmo nó do ring, e as linhas em ordem dentro da partição | o mesmo prefixo de pasta no object storage |
-| Granularidade | **fina**: milhões de partições pequenas (`id_cliente`) | **grossa**: poucas partições grandes (`dia`, `mês`) |
-| O que quebra | a partição que cresce sem limite (seção 8.f) | milhares de arquivos minúsculos (*small files*) |
-
-Nos dois casos a partição existe pelo mesmo motivo: a consulta lê só o que precisa. O que muda é o que "junto" significa — o mesmo nó, no Cassandra; a mesma pasta, no data lake.
-
-Na `lab.cliente`, os três papéis se confundem: a chave tem uma coluna só, que é ao mesmo tempo primary key e partition key, e não existe clustering key. Na seção 5 eles se separam.
+O outro extremo — uma partição que cresce sem limite — é um problema de verdade, e existe uma técnica para controlá-lo. Ela tem seção própria: 8.f.
 
 **→ Próxima seção.** Até aqui cada partição de `lab.cliente` teve uma linha só — a forma mais simples, e a menos "wide" que existe. Na próxima seção uma partição vai ganhar várias linhas.
 

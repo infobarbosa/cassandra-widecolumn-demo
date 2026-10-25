@@ -18,6 +18,7 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 | `03-multi-datacenter` | 2 |
 | `04-ring-token` | 4 |
 | `04a-armazene-junto` | 4 |
+| `04c-particoes-data-lake` | 4 |
 | `04b-quem-e-quem` | 4 |
 | `05a-tela-cartoes` | 5 |
 | `05-colunar-vs-widecolumn` | 10 |
