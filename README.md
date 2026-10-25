@@ -255,7 +255,7 @@ Ao lado de um banco transacional, o Cassandra aparece em três padrões comuns:
 
 ### 1.e. O caso deste laboratório: infobarBank
 
-Para exercitar tudo isso, este laboratório usa um caso: o **infobarBank**, um banco digital. O coração dele — contas, cartões, transferências — roda num **core bancário** tradicional, um DB2 em mainframe, onde cada operação é uma transação com todas as garantias que dinheiro exige.
+Para exercitar tudo isso, este laboratório usa um caso: o **infobarBank**, um banco digital. O coração dele — contas, cartões, transferências — roda num **core bancário** tradicional, um Oracle em servidores PowerPC, onde cada operação é uma transação com todas as garantias que dinheiro exige.
 
 O problema é o aplicativo. Milhões de clientes abrem o app ao longo do dia, e cada abertura pede saldo, últimos lançamentos e limite dos cartões. Se cada uma dessas leituras batesse no core, o sistema que precisa processar transferências passaria o dia respondendo a quem só quer olhar o extrato.
 
@@ -263,9 +263,9 @@ O problema é o aplicativo. Milhões de clientes abrem o app ao longo do dia, e 
 
 A solução do banco é o primeiro padrão de 1.d, a leitura separada da escrita:
 
-![O app escreve no core bancário (DB2); um CDC replica cada mudança via Kafka para o Cassandra; o app lê do Cassandra por uma API](diagramas/01-arquitetura-infobarbank.svg)
+![O app escreve no core bancário (Oracle); um CDC replica cada mudança via Kafka para o Cassandra; o app lê do Cassandra por uma API](diagramas/01-arquitetura-infobarbank.svg)
 
-O app **escreve** no core. Um processo de **CDC** (*change data capture*) captura cada mudança do DB2 e a entrega, via Kafka, ao **Cassandra**. O app **lê** do Cassandra. O core fica com o que faz bem — transação —, e o Cassandra com o que faz bem: responder a um volume enorme de leituras e escritas simples, sempre com o mesmo tempo de resposta.
+O app **escreve** no core. Um processo de **CDC** (*change data capture*) captura cada mudança do Oracle e a entrega, via Kafka, ao **Cassandra**. O app **lê** do Cassandra. O core fica com o que faz bem — transação —, e o Cassandra com o que faz bem: responder a um volume enorme de leituras e escritas simples, sempre com o mesmo tempo de resposta.
 
 Este laboratório é a construção do lado direito desse desenho: a keyspace `infobarbank` que o aplicativo consulta.
 
