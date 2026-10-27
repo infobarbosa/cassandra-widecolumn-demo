@@ -19,6 +19,7 @@ Para atualizar uma imagem depois de editar a cena: **Exportar imagem → SVG**, 
 | `04a-armazene-junto` | 4 |
 | `04c-particoes-data-lake` | 4 |
 | `04-ring-token` | 4 |
+| `04d-token-coordinator-rf` | 4 |
 | `05a-tela-cartoes` | 5 |
 | `08-particao-cartoes` | 5 |
 | `09-metodologia` | 6 |

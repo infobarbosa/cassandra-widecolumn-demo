@@ -797,6 +797,10 @@ O token é um inteiro de 64 bits, produzido pelo particionador `Murmur3Partition
 
 No desenho os tokens são números pequenos, para caber no olho. No seu nó, o token da Marivalda é `-754340186604780055` — o princípio é o mesmo, só a escala muda.
 
+Juntando com a seção 2: o coordinator calcula o token, encontra o nó dono da faixa e repassa a escrita a ele e aos nós seguintes do ring, até completar o fator de replicação.
+
+![A aplicação envia o INSERT da Marivalda ao Node 6, que atua como coordinator; ele calcula o token 225, que cai na faixa 200..299 do Node 3, e repassa a escrita às três réplicas, Nodes 3, 4 e 5, porque o RF é 3; os Nodes 4 e 5 guardam cópia da faixa 200..299](diagramas/04d-token-coordinator-rf.svg)
+
 ### 4.c. O ring deste nó
 
 ```sh
