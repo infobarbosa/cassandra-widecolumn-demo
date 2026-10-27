@@ -405,6 +405,7 @@ Os nomes dos datacenters não são etiquetas livres: precisam existir na topolog
 > **Não execute.** Exemplo para leitura.
 
 ```
+# NÃO EXECUTAR!
 CREATE KEYSPACE lab_erro
   WITH REPLICATION = { 'class':'NetworkTopologyStrategy', 'dc-brasil':1 };
 
@@ -425,6 +426,7 @@ Os casos abaixo são para debate em sala. Todos usam a mesma ideia: um cluster e
 Distribuição geográfica em três países — três cópias no Brasil, três nos Estados Unidos, duas na Alemanha:
 
 ```
+# NÃO EXECUTAR!
 CREATE KEYSPACE ks001
   WITH REPLICATION = {
    'class'  : 'NetworkTopologyStrategy',
@@ -437,6 +439,7 @@ CREATE KEYSPACE ks001
 Uma região só, mas com quatro instalações em duas zonas de disponibilidade, segmentadas por propósito. Três cópias transacionais em cada zona (seis no total) e uma cópia analítica em cada (duas no total) — o mesmo cluster servindo OLTP e OLAP sem que a carga analítica pese nos nós transacionais:
 
 ```
+# NÃO EXECUTAR!
 CREATE KEYSPACE ks001
   WITH REPLICATION = {
    'class'  : 'NetworkTopologyStrategy',
@@ -450,6 +453,7 @@ CREATE KEYSPACE ks001
 O comando a seguir entrega a mesma quantidade de cópias do anterior, mas a distribuição física depende de como o administrador declarou a topologia. É um tópico mais avançado, para discutirmos em sala:
 
 ```
+# NÃO EXECUTAR!
 CREATE KEYSPACE ks001
   WITH REPLICATION = {
    'class'  : 'NetworkTopologyStrategy',
