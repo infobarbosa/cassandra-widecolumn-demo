@@ -1170,7 +1170,7 @@ Toda chave do modelo lógico passa por três perguntas. A primeira você já con
 
 | Critério | Pergunta |
 |---|---|
-| **Unicidade** | A chave identifica uma linha só? |
+| **Unicidade** | A chave primária identifica uma linha só? |
 | **Ordenação** | As linhas vêm na ordem que a consulta pede? |
 | **Distribuição** | A partição tem tamanho limitado? |
 
