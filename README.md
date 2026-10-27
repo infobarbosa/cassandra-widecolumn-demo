@@ -239,7 +239,7 @@ O avesso importa tanto quanto. O Cassandra é a escolha errada quando a aplicaç
 | **Hardware comum** | Roda em máquinas convencionais, sem equipamento especial. |
 | **Não substitui o relacional** | Não tem `JOIN`, nem transação entre tabelas, nem consulta livre. |
 
-A última linha é o preço das outras seis. Por isso o Cassandra raramente trabalha sozinho: ele costuma ficar ao lado de um banco relacional, e não no lugar dele.
+A última linha é o preço da escala e da latência previsível: toda consulta precisa saber de antemão em que partição está o dado, e é isso que tira o `JOIN`, a transação entre tabelas e a consulta livre. Por isso, numa arquitetura, o Cassandra costuma atender domínios específicos (o extrato, o histórico, a telemetria), enquanto o que exige transação ou consulta livre fica num banco relacional.
 
 Há um segundo preço, mais sutil. Em sistemas distribuídos, quando a rede entre servidores falha, é preciso escolher entre responder sempre (**disponibilidade**) ou responder só com o dado garantidamente atual (**consistência**) — é o que diz o **teorema CAP**. O Cassandra escolhe disponibilidade: aceita, por um instante, que uma cópia esteja atrasada em relação à outra, e por isso se diz que ele tem **consistência eventual**. Quanto de consistência cada consulta exige é configurável, e é assunto do laboratório de cluster.
 
