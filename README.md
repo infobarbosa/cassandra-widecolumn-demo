@@ -1060,6 +1060,8 @@ Duas regras de negócio completam as consultas:
 - **Q3**: os últimos três lançamentos **aprovados**; se o mês corrente não tiver nenhum, busca-se o mês anterior.
 - **Q4**: o extrato mostra **um mês por vez** — a tela tem um seletor de mês, não um campo livre de datas. Na seção 7 você vai ver que essa decisão de tela é consequência do modelo de dados.
 
+> **Detalhe cada consulta antes de modelar.** "Exibir dados da conta" ainda não basta para desenhar uma tabela. Q1: quais dados da conta — saldo, apelido, número? Q2: quais cartões — todos, ou só os ativos? Em que ordem? Q4: qual período — um mês, um intervalo livre, desde a abertura da conta? Cada resposta muda a tabela: o que a consulta informa para buscar vira **partition key**; a ordem em que o resultado aparece vira **clustering key**; o que a tela exibe vira as demais colunas. As duas regras acima são esse tipo de detalhe.
+
 ### 6.c. A inversão em relação ao relacional
 
 Aquela tabela acima não é documentação do modelo: **é o método.** Ela tem nome — **modelagem orientada a consultas**, ou *query-first design* — e a inversão em relação ao que você aprendeu em relacional é literal:
