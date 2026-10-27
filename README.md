@@ -245,7 +245,7 @@ Há um segundo preço, mais sutil. Em sistemas distribuídos, quando a rede entr
 
 ### 1.d. Como ele se encaixa numa arquitetura
 
-Ao lado de um banco transacional, o Cassandra aparece em três padrões comuns:
+Numa persistência poliglota, o Cassandra aparece em três padrões comuns:
 
 - **Leitura separada da escrita** (*CQRS*): um sistema transacional grava, e o Cassandra serve as leituras.
 - **Integração por eventos**: CDC e Kafka alimentando o Cassandra a partir de vários bancos de origem — PostgreSQL, MySQL, SQL Server, Oracle.
