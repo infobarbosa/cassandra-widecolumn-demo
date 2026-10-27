@@ -303,7 +303,7 @@ Cada nó é dono de **faixas** de dados. Como o Cassandra decide qual dado vai p
 
 Guardar cada dado num nó só seria frágil: se o nó cai, o dado some. Por isso cada dado tem várias cópias, as **réplicas**, em nós diferentes. Quantas cópias é o **fator de replicação** (*replication factor*, RF).
 
-![Escrita com RF=3: a aplicação envia a requisição ao Node 6, que atua como coordinator, calcula o token 225 e repassa às três réplicas, Nodes 3, 4 e 5](diagramas/02-coordinator-replicas.svg)
+![Escrita com RF=3: a aplicação envia a requisição ao Node 6, que atua como coordinator e repassa às três réplicas, Nodes 3, 4 e 5](diagramas/02-coordinator-replicas.svg)
 
 O nó que recebe a requisição vira o **coordinator** daquela operação. Ele calcula a quem o dado pertence, repassa às réplicas e responde à aplicação. Na leitura é o mesmo caminho: o coordinator consulta as réplicas e devolve o resultado. Com RF=3, dois nós podem cair e o dado continua disponível.
 
