@@ -1187,17 +1187,17 @@ Toda chave do modelo lógico passa por três perguntas. A primeira você já con
 
 ## 7. Do fluxo à chave
 
-O modelo lógico do infobarBank tem uma tabela por consulta. Na notação usada para modelar Cassandra, **K** marca as colunas da partition key, e **C↑** / **C↓** as clustering keys, com a ordem em que as linhas ficam gravadas:
+O modelo lógico do infobarBank tem uma tabela por consulta. Na notação usada para modelar Cassandra, **K** marca as colunas da partition key, e **C↑** / **C↓** as clustering keys, com a ordem em que as linhas ficam gravadas. A última coluna lista as **colunas de dados** (*data columns*), as que não fazem parte da chave:
 
-| Consulta | Tabela | K | C |
-|---|---|---|---|
-| Q1 | `conta_corrente` | `id_cliente` | `status` ↑, `id_conta` ↑ |
-| Q2 | `cartao_credito` | `id_cliente` | `status` ↑, `id_cartao` ↑ |
-| Q3 | `lancamentos_por_status` | `id_cliente` | `status` ↑, `data_hora` ↓, `id_lancamento` ↑ |
-| Q4 | `lancamentos_por_periodo` | `id_cliente` | `data_hora` ↓, `id_lancamento` ↑ |
-| Q5 | `lancamentos_por_produto` | `id_cliente` | `id_produto` ↑, `data_hora` ↓, `id_lancamento` ↑ |
-| Q6 | `lancamentos_por_tipo` | `id_cliente` | `tipo_operacao` ↑, `data_hora` ↓, `id_lancamento` ↑ |
-| Q7 | `lancamentos_detalhe` | `id_lancamento` | — |
+| Consulta | Tabela | K | C | Colunas de dados |
+|---|---|---|---|---|
+| Q1 | `conta_corrente` | `id_cliente` | `status` ↑, `id_conta` ↑ | `apelido_cliente`, `data_ultimo_acesso`, `saldo_disponivel` |
+| Q2 | `cartao_credito` | `id_cliente` | `status` ↑, `id_cartao` ↑ | `num_cartao`, `cvv`, `data_validade`, `limite_total`, `limite_disponivel` |
+| Q3 | `lancamentos_por_status` | `id_cliente` | `status` ↑, `data_hora` ↓, `id_lancamento` ↑ | `id_produto`, `tipo_operacao`, `estabelecimento`, `valor` |
+| Q4 | `lancamentos_por_periodo` | `id_cliente` | `data_hora` ↓, `id_lancamento` ↑ | `id_produto`, `status`, `tipo_operacao`, `estabelecimento`, `valor` |
+| Q5 | `lancamentos_por_produto` | `id_cliente` | `id_produto` ↑, `data_hora` ↓, `id_lancamento` ↑ | `status`, `tipo_operacao`, `estabelecimento`, `valor` |
+| Q6 | `lancamentos_por_tipo` | `id_cliente` | `tipo_operacao` ↑, `data_hora` ↓, `id_lancamento` ↑ | `id_produto`, `status`, `estabelecimento`, `valor` |
+| Q7 | `lancamentos_detalhe` | `id_lancamento` | — | `id_cliente`, `data_hora`, `id_produto`, `status`, `tipo_operacao`, `estabelecimento`, `valor`, `codigo_autenticacao` |
 
 Este é o modelo **lógico**. Nesta seção vamos percorrer essas chaves com a consulta que motivou cada uma, testar os três critérios da seção 6 e, no caminho, passar ao modelo **físico**: as tabelas de lançamento (Q3 a Q6) vão ganhar uma coluna a mais na partition key, e a 7.b mostra por quê.
 
