@@ -30,7 +30,7 @@ ID_CLIENTE_PADRAO = "2b162060"
 # diferente, e é a chave primária de cada tabela que determina qual.
 CONSULTAS = {
     "Q1": """
-        SELECT id_conta, status, apelido_cliente, saldo_disponivel
+        SELECT status, apelido_cliente, saldo_disponivel
         FROM conta_corrente
         WHERE id_cliente = ?
     """,
@@ -142,7 +142,8 @@ def main():
 
         titulo("Q1 · Dados da conta")
         for conta in session.execute(stmt["Q1"], [id_cliente]):
-            print(f"  conta {conta.id_conta}  {conta.status:<8} "
+            # O id da conta é o próprio id_cliente: uma conta por cliente.
+            print(f"  conta {id_cliente}  {conta.status:<8} "
                   f"apelido {conta.apelido_cliente:<12} saldo {moeda(conta.saldo_disponivel)}")
 
         titulo("Q2 · Cartões de crédito")

@@ -996,7 +996,7 @@ Esta é uma **wide partition** — uma partição de múltiplas linhas, guardada
 
 > O termo *wide-column* vem de antes do CQL. Nos modelos herdados do Bigtable, cada linha podia ter milhares de colunas, diferentes de uma linha para outra (seção 1.a). No Cassandra de hoje, essa "linha larga" é a partição: cada linha CQL de uma wide partition era, por dentro, um grupo de colunas da mesma linha.
 
-Na `lab.cliente`, com chave de uma coluna, cada partição tinha uma linha só. Agora você conhece a outra ponta, e os dois extremos têm riscos: a partição de uma linha não aproveita nada do modelo; a partição que cresce sem limite é um problema que a Parte 2 vai medir. Você vai encontrar o termo *wide partition* também nesse sentido negativo, em alertas e artigos sobre partições grandes demais: é a mesma estrutura, quando cresce sem controle (seção 7.f).
+Na `lab.cliente`, com chave de uma coluna, cada partição tinha uma linha só. Agora você conhece a outra ponta. A partição de uma linha é a forma certa quando cada chave corresponde a um registro só, como a conta corrente da seção 7.c, uma por cliente; ela só não agrupa nada. Já a partição que cresce sem limite é um problema que a Parte 2 vai medir. Você vai encontrar o termo *wide partition* também nesse sentido negativo, em alertas e artigos sobre partições grandes demais: é a mesma estrutura, quando cresce sem controle (seção 7.f).
 
 Na Parte 3 você vai abrir o arquivo desta tabela e ver as três linhas da Marivalda, em ordem, dentro de uma só partição (seção 9.l).
 
@@ -1031,9 +1031,9 @@ As duas primeiras etapas são independentes; a terceira junta as duas. Vamos per
 
 ### 6.a. O modelo conceitual
 
-![Diagrama de entidades: Cliente possui Contas correntes e Cartões de crédito; cada conta e cada cartão geram Lançamentos](diagramas/10-modelo-conceitual.svg)
+![Diagrama de entidades: Cliente possui uma Conta corrente (1:1) e Cartões de crédito (1:N); a conta e cada cartão geram Lançamentos](diagramas/10-modelo-conceitual.svg)
 
-Uma cliente tem contas e cartões; contas e cartões geram lançamentos. É o diagrama que você faria para qualquer banco relacional — e ele é necessário, porque é ele que diz que dados existem. Mas repare no que ele **não** diz: nada sobre o que o aplicativo mostra, em que ordem, a partir de quê. E é isso que decide a chave.
+Uma cliente tem uma única conta corrente e pode ter vários cartões; a conta e os cartões geram lançamentos. É o diagrama que você faria para qualquer banco relacional — e ele é necessário, porque é ele que diz que dados existem e quantos de cada um: uma conta por cliente, vários cartões. Mas repare no que ele **não** diz: nada sobre o que o aplicativo mostra, em que ordem, a partir de quê. E é isso que decide a chave.
 
 ### 6.b. O fluxo aplicacional
 
@@ -1193,7 +1193,7 @@ O mapa é o modelo lógico, uma tabela por consulta. Na notação usada para mod
 
 | Consulta | Tabela | K | C | Colunas de dados | Seção |
 |---|---|---|---|---|---|
-| Q1 | `conta_corrente` | `id_cliente` | `status` ↑, `id_conta` ↑ | `apelido_cliente`, `data_ultimo_acesso`, `saldo_disponivel` | [7.c](#7c-q1-dados-da-conta) |
+| Q1 | `conta_corrente` | `id_cliente` | — | `status`, `apelido_cliente`, `data_ultimo_acesso`, `saldo_disponivel` | [7.c](#7c-q1-dados-da-conta) |
 | Q2 | `cartao_credito` | `id_cliente` | `status` ↑, `id_cartao` ↑ | `num_cartao`, `cvv`, `data_validade`, `limite_total`, `limite_disponivel` | [7.d](#7d-q2-cartões-e-limites) |
 | Q3 | `lancamentos_por_status` | `id_cliente` | `status` ↑, `data_hora` ↓, `id_lancamento` ↑ | `id_produto`, `tipo_operacao`, `estabelecimento`, `valor` | [7.e](#7e-q3-os-últimos-lançamentos-aprovados) |
 | Q4 | `lancamentos_por_periodo` | `id_cliente` | `data_hora` ↓, `id_lancamento` ↑ | `id_produto`, `status`, `tipo_operacao`, `estabelecimento`, `valor` | [7.f](#7f-q4-o-extrato-do-mês) |
@@ -1277,13 +1277,15 @@ O CPF é um dos caminhos de entrada. E-mail e telefone são outros dois, cada um
 
 A **Q1** alimenta o topo da tela inicial: o nome da cliente, a conta e o saldo.
 
-![A tela inicial do app com o topo em destaque: nome da cliente, número da conta e saldo, lidos da conta_corrente pela Q1](diagramas/07a-tela-conta.svg)
+![A tela inicial do app com o topo em destaque: nome da cliente e saldo, lidos da conta_corrente pela Q1; o número da conta é o id_cliente](diagramas/07a-tela-conta.svg)
 
 | A tela tem em mãos | A tela precisa de |
 |---|---|
-| `id_cliente`, do login | `apelido_cliente`, `id_conta`, `saldo_disponivel` |
+| `id_cliente`, do login | `apelido_cliente`, `saldo_disponivel` |
 
-A tabela que a responde é a `conta_corrente`, e a `PRIMARY KEY` dela tem duas partes:
+O número da conta não está na coluna da direita porque a tela já o tem. No modelo conceitual da 6.a, a cliente tem uma única conta corrente, e o id da conta é o próprio `id_cliente`.
+
+A tabela que responde é a `conta_corrente`:
 
 ```sh
 # 7.c.1
@@ -1292,28 +1294,29 @@ cqlsh -e "DESCRIBE TABLE infobarbank.conta_corrente;"
 ```
 
 ```
-    PRIMARY KEY (id_cliente, status, id_conta)
-) WITH CLUSTERING ORDER BY (status ASC, id_conta ASC)
+    id_cliente text PRIMARY KEY,
 ```
 
-Leia a cláusula da esquerda para a direita: a **primeira** coluna é a partition key, as demais são clustering keys. Aqui é `id_cliente` que decide a partição, e o `CLUSTERING ORDER BY` que veio de brinde confirma quem são as outras duas.
+A chave é uma coluna só, como a da sua `lab.cliente` na seção 5: a chave inteira é a partition key, e não há clustering key. Cada partição guarda uma linha, porque a relação é 1:1. Com uma conta por cliente, não há nada para agrupar nem para ordenar dentro da partição. A cardinalidade da 6.a já diz se a partição terá uma linha ou várias; a Q2 mostra o outro caso.
 
 ```sh
 # 7.c.2
 cqlsh -e "
-SELECT id_conta, status, apelido_cliente, saldo_disponivel
+SELECT apelido_cliente, saldo_disponivel
 FROM infobarbank.conta_corrente
 WHERE id_cliente='2b162060';"
 
 ```
 
 ```
- id_conta | status | apelido_cliente | saldo_disponivel
-----------+--------+-----------------+------------------
- 2b162060 |  ATIVA |       MARIVALDA |              100
+ apelido_cliente | saldo_disponivel
+-----------------+------------------
+       MARIVALDA |              100
+
+(1 rows)
 ```
 
-> **No app — aba Q1.** Leve a consulta para a caixa, troque `'2b162060'` por `:id_cliente` e execute. O topo da tela inicial se preenche com o apelido, a conta e o saldo.
+> **No app — aba Q1.** Leve a consulta para a caixa, troque `'2b162060'` por `:id_cliente` e execute. O topo da tela inicial se preenche com o apelido e o saldo; o número da conta, a tela já tinha.
 
 ### 7.d. Q2: cartões e limites
 
@@ -1323,10 +1326,23 @@ A **Q2** alimenta a parte de baixo da tela inicial: os cartões da cliente, os a
 |---|---|
 | `id_cliente` | `id_cartao`, `num_cartao`, `status`, `limite_disponivel` |
 
-A tabela é a `cartao_credito`, com a mesma forma de chave da `conta_corrente`:
+Aqui a relação é a outra: a cliente pode ter vários cartões (1:N na 6.a), e a chave precisa guardá-los juntos. A tabela é a `cartao_credito`:
 
 ```sh
 # 7.d.1
+cqlsh -e "DESCRIBE TABLE infobarbank.cartao_credito;"
+
+```
+
+```
+    PRIMARY KEY (id_cliente, status, id_cartao)
+) WITH CLUSTERING ORDER BY (status ASC, id_cartao ASC)
+```
+
+Leia a cláusula da esquerda para a direita: a **primeira** coluna é a partition key, as demais são clustering keys. Aqui é `id_cliente` que decide a partição, e o `CLUSTERING ORDER BY` que veio de brinde confirma quem são as outras duas.
+
+```sh
+# 7.d.2
 cqlsh -e "
 SELECT status, id_cartao, num_cartao, limite_total, limite_disponivel
 FROM infobarbank.cartao_credito
@@ -1344,9 +1360,11 @@ WHERE id_cliente='2b162060';"
 (3 rows)
 ```
 
-Três linhas em **uma** partição — a wide partition que você montou na seção 5, agora no sistema do banco. Com uma diferença na chave: aqui ela é `(id_cliente, status, id_cartao)`, com `status` **antes** de `id_cartao`.
+Três linhas em **uma** partição — a wide partition que você montou na seção 5, agora no sistema do banco. Com uma diferença em relação à sua chave: aqui o `status` vem **antes** de `id_cartao`.
 
 E note a ordem: os dois `ATIVO` vêm antes do `INATIVO`, porque `status` é a primeira clustering key e ordena alfabeticamente. Não é coincidência conveniente — é decisão de modelagem. A tela de cartões mostra primeiro os que a cliente pode usar, e essa ordenação **não custa nada em tempo de consulta** porque já está no disco. Compare com o mundo relacional, onde seria um `ORDER BY status` executado a cada requisição.
+
+A `conta_corrente` também tem `status`, mas como coluna comum: com uma linha por partição, não há o que ordenar.
 
 > **No app — aba Q2.** Os cartões aparecem na tela inicial, os ativos primeiro: a ordem veio pronta da partição, sem nada na consulta.
 
@@ -1915,7 +1933,7 @@ WHERE id_cliente='2b162060' AND competencia='$COMPETENCIA' AND id_produto='89719
 (13 rows)
 ```
 
-`897199aa` é um dos cartões que a Q2 listou. Agora a conta corrente, cujo id a Q1 devolveu:
+`897199aa` é um dos cartões que a Q2 listou. Agora a conta corrente, cujo id é o próprio `id_cliente` (7.c):
 
 ```sh
 # 7.g.4
@@ -2001,7 +2019,7 @@ A **Q7** é a terceira tela: a cliente toca numa linha do extrato e vê o lança
 |---|---|
 | `id_cliente` e o `id_lancamento` da linha tocada | `data_hora`, `estabelecimento`, `valor`, `tipo_operacao`, `status`, `codigo_autenticacao` |
 
-A tabela é a `lancamentos_detalhe`, e tem a chave mais simples de todas, uma coluna só, como a sua `lab.cliente`:
+A tabela é a `lancamentos_detalhe`, com a forma de chave da Q1: uma coluna só.
 
 ```sh
 # 7.i.1
@@ -2250,9 +2268,9 @@ O Cassandra não ordena em tempo de consulta: ele **entrega** na ordem em que gr
 - Por que a tela de extrato do seu banco tem um seletor de mês.
 - O que é bucketing, o que ele protege, o que ele cobra, e como escolher o período do bucket.
 - Dado um `PRIMARY KEY`, qual consulta ele responde. E dada uma consulta, qual `PRIMARY KEY` ela pede.
+- Por que a `conta_corrente` (1:1) tem chave de uma coluna só e a `cartao_credito` (1:N) tem clustering key.
 - O que é desnormalização, o que ela cobra e o que ela compra.
 - Por que `ALLOW FILTERING` não é solução para uma consulta que a aplicação faz a cada acesso.
-
 - De onde vem cada valor que uma consulta recebe: do login, do seletor de mês, de um filtro, da linha tocada na tela anterior.
 
 **→ Próxima seção.** Até aqui, as consultas foram digitadas, no `cqlsh` e na caixa do app. Um aplicativo de verdade as tem no código. Vamos executar o mesmo fluxo Q1 a Q7 de dentro de uma aplicação Python.
@@ -2513,17 +2531,17 @@ A tela de abertura do aplicativo precisa de Q1 e Q2 ao mesmo tempo. Executá-las
 python3 -c "
 from cassandra.cluster import Cluster
 session = Cluster(['127.0.0.1']).connect('infobarbank')
-q1 = session.prepare('SELECT id_conta, saldo_disponivel FROM conta_corrente WHERE id_cliente = ?')
+q1 = session.prepare('SELECT apelido_cliente, saldo_disponivel FROM conta_corrente WHERE id_cliente = ?')
 q2 = session.prepare('SELECT id_cartao, limite_disponivel FROM cartao_credito WHERE id_cliente = ?')
 futuros = [session.execute_async(q1, ['2b162060']), session.execute_async(q2, ['2b162060'])]
 conta, cartoes = [f.result() for f in futuros]
-print('conta  :', conta.one().id_conta, conta.one().saldo_disponivel)
+print('conta  :', conta.one().apelido_cliente, conta.one().saldo_disponivel)
 print('cartões:', [c.id_cartao for c in cartoes])"
 
 ```
 
 ```
-conta  : 2b162060 100.0
+conta  : MARIVALDA 100.0
 cartões: ['007c2c1c', '897199aa', '9a748c3c']
 ```
 
