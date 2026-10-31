@@ -8,8 +8,8 @@ Uso:
     python3 driver_demo.py 2b162060 2026-05
 
 A competência é descoberta no banco quando não informada, porque os lançamentos
-são gerados em relação à data de execução. O script escolhe a penúltima: a mais
-recente é o mês corrente e está pela metade.
+são gerados em relação à data de execução. O script escolhe a mais recente, o
+mês atual, como a tela inicial do app.
 """
 
 import sys
@@ -30,7 +30,7 @@ ID_CLIENTE_PADRAO = "2b162060"
 # diferente, e é a chave primária de cada tabela que determina qual.
 CONSULTAS = {
     "Q1": """
-        SELECT id_conta, status, apelido_cliente, saldo_disponivel
+        SELECT status, apelido_cliente, saldo_disponivel
         FROM conta_corrente
         WHERE id_cliente = ?
     """,
@@ -43,7 +43,7 @@ CONSULTAS = {
         SELECT data_hora, id_produto, estabelecimento, valor
         FROM lancamentos_por_status
         WHERE id_cliente = ? AND competencia = ? AND status = 'APROVADA'
-        LIMIT 5
+        LIMIT 3
     """,
     "Q4": """
         SELECT data_hora, id_produto, tipo_operacao, estabelecimento, valor
@@ -142,7 +142,8 @@ def main():
 
         titulo("Q1 · Dados da conta")
         for conta in session.execute(stmt["Q1"], [id_cliente]):
-            print(f"  conta {conta.id_conta}  {conta.status:<8} "
+            # O id da conta é o próprio id_cliente: uma conta por cliente.
+            print(f"  conta {id_cliente}  {conta.status:<8} "
                   f"apelido {conta.apelido_cliente:<12} saldo {moeda(conta.saldo_disponivel)}")
 
         titulo("Q2 · Cartões de crédito")
