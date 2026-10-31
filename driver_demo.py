@@ -8,8 +8,8 @@ Uso:
     python3 driver_demo.py 2b162060 2026-05
 
 A competência é descoberta no banco quando não informada, porque os lançamentos
-são gerados em relação à data de execução. O script escolhe a penúltima: a mais
-recente é o mês corrente e está pela metade.
+são gerados em relação à data de execução. O script escolhe a mais recente, o
+mês atual, como a tela inicial do app.
 """
 
 import sys
@@ -43,7 +43,7 @@ CONSULTAS = {
         SELECT data_hora, id_produto, estabelecimento, valor
         FROM lancamentos_por_status
         WHERE id_cliente = ? AND competencia = ? AND status = 'APROVADA'
-        LIMIT 5
+        LIMIT 3
     """,
     "Q4": """
         SELECT data_hora, id_produto, tipo_operacao, estabelecimento, valor
