@@ -1393,11 +1393,10 @@ cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_por_status;"
 
 Repare nos parênteses duplos: a partition key agora tem **duas** colunas, `id_cliente` **e** `competencia`, e o hash é calculado sobre o par. A competência é o mês do lançamento. No modelo lógico do início da seção ela não existe, e a chave da Q3 seria só `id_cliente`: a competência é decisão de modelo físico, e a Q4 (7.f) mostra por que ela está ali. Por ora, basta saber que **toda consulta a uma tabela de lançamentos informa um mês**.
 
-Os lançamentos do laboratório são gerados no primeiro boot, cobrindo os doze meses anteriores, então o mês atual sempre tem dados. Guarde-o numa variável:
+Os lançamentos do laboratório são gerados no primeiro boot, cobrindo os doze meses anteriores. O mês dessa carga é o mais recente com dados, e o ambiente já o traz na variável `COMPETENCIA`, definida em todo terminal:
 
 ```sh
 # 7.e.2
-COMPETENCIA=$(date +%Y-%m)
 echo $COMPETENCIA
 
 ```
@@ -1408,7 +1407,7 @@ echo $COMPETENCIA
 
 Os comandos daqui em diante usam `$COMPETENCIA`, e as saídas mostradas aqui são de outubro de 2026.
 
-> A variável vale só neste terminal. Se abrir outro, rode o 7.e.2 de novo.
+> A variável vem do ambiente e vale em todo terminal. Se você religar a máquina num mês seguinte, ela continua com o mês da carga, que é onde estão os dados. Se a saída vier vazia, veja [`$COMPETENCIA` vazia](#competencia-vazia).
 
 Com ela, a Q3:
 
@@ -1795,11 +1794,10 @@ cqlsh -e "SELECT competencia, data_hora FROM infobarbank.lancamentos_por_periodo
 InvalidRequest: ... "Cannot execute this query as it might involve data filtering..."
 ```
 
-Faz sentido, pelo que você viu na seção 4: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre agosto e outubro". A saída é listar os buckets desejados — aqui, o mês anterior e o atual:
+Faz sentido, pelo que você viu na seção 4: a partição vem de um hash, e hash não tem ordem. Não existe "as partições entre agosto e outubro". A saída é listar os buckets desejados — aqui, o mês anterior e o atual. O mês anterior também vem pronto do ambiente, na variável `COMPETENCIA_ANTERIOR`:
 
 ```sh
 # 7.f.18
-COMPETENCIA_ANTERIOR=$(date -d "$COMPETENCIA-01 -1 month" +%Y-%m)
 cqlsh -e "
 SELECT competencia, count(*)
 FROM infobarbank.lancamentos_por_periodo
@@ -3676,6 +3674,18 @@ DIR=$(ls -rtd /var/lib/cassandra/data/lab/cliente-* | tail -1)
 
 ```
 
+### `$COMPETENCIA` vazia
+
+As variáveis `$COMPETENCIA` e `$COMPETENCIA_ANTERIOR` vêm prontas em todo terminal. Se `echo $COMPETENCIA` não mostrar nada, o seu ambiente foi criado com uma versão anterior da imagem, que não as define. Não é preciso recriá-lo: grave as duas no seu `~/.bashrc`, a partir da data da carga das keyspaces, e abra um terminal novo:
+
+```sh
+cat >> ~/.bashrc <<'EOF'
+export COMPETENCIA=$(date -r /var/lib/cassandra/.keyspaces-carregadas +%Y-%m)
+export COMPETENCIA_ANTERIOR=$(date -d "$COMPETENCIA-01 -1 month" +%Y-%m)
+EOF
+
+```
+
 ### `keyspace infobarshop does not exist` (ou `infobarbank`)
 
 A carga do primeiro boot ainda não terminou, ou falhou. Veja o que ela diz:
@@ -3700,7 +3710,7 @@ Se o `DESCRIBE KEYSPACES` mostrar uma keyspace `ecommerce` no lugar de `infobars
 
 Confira nesta ordem:
 
-1. **Competência.** Os lançamentos são gerados em relação à data em que você criou o ambiente, e os comandos da seção 7 em diante usam a variável `$COMPETENCIA`. Confira com `echo $COMPETENCIA`; se estiver vazia (você abriu outro terminal), rode o 7.e.2 de novo.
+1. **Competência.** Os lançamentos são gerados em relação à data em que você criou o ambiente, e os comandos da seção 7 em diante usam as variáveis `$COMPETENCIA` e `$COMPETENCIA_ANTERIOR`, que todo terminal já traz. Confira com `echo $COMPETENCIA $COMPETENCIA_ANTERIOR`; se estiverem vazias, veja [`$COMPETENCIA` vazia](#competencia-vazia).
 2. **Cliente.** No `infobarbank`, sete das cinquenta clientes têm conta, cartões e lançamentos: `2b162060`, `2b16242a`, `2b16256a`, `2b16353c`, `2b1636ae`, `2b16396a`, `2b163bcc`.
 3. **Valores que sempre variam.** `Host ID`, `Load`, UUID do diretório da tabela, timestamps, e o tamanho do `Data.db` em um ou dois bytes.
 4. **Numeração das SSTables.** Se você fez um flush a mais, seus arquivos não serão `nb-1` a `nb-4`. Use os nomes que o `ls` mostrar.
@@ -3719,7 +3729,7 @@ carregar-keyspaces
 
 ```
 
-Leva cerca de um minuto. Não hesite: nada neste laboratório merece ser preservado.
+Leva cerca de um minuto. Os lançamentos novos são gerados em relação a hoje, e a `$COMPETENCIA` passa a ser o mês corrente: abra um terminal novo antes de seguir. Não hesite: nada neste laboratório merece ser preservado.
 
 ### O tamanho da tabela em disco não diminui depois do `DELETE`
 
