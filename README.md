@@ -1393,7 +1393,7 @@ cqlsh -e "DESCRIBE TABLE infobarbank.lancamentos_por_status;"
 
 Repare nos parênteses duplos: a partition key agora tem **duas** colunas, `id_cliente` **e** `competencia`, e o hash é calculado sobre o par. A competência é o mês do lançamento. No modelo lógico do início da seção ela não existe, e a chave da Q3 seria só `id_cliente`: a competência é decisão de modelo físico, e a Q4 (7.f) mostra por que ela está ali. Por ora, basta saber que **toda consulta a uma tabela de lançamentos informa um mês**.
 
-Os lançamentos do laboratório são gerados no primeiro boot, cobrindo os doze meses anteriores. O mês dessa carga é o mais recente com dados, e o ambiente já o traz na variável `COMPETENCIA`, definida em todo terminal:
+Os lançamentos do laboratório são gerados no primeiro boot, em doze meses: o mês da carga e os onze anteriores, com cada conta e cada cartão presente em todos eles. No mês da carga, os lançamentos vão do dia 1º até a hora da carga, então ele tem dados mesmo numa carga feita no dia 1º. É o mês mais recente, e o ambiente já o traz na variável `COMPETENCIA`, definida em todo terminal:
 
 ```sh
 # 7.e.2
